@@ -1,0 +1,42 @@
+-- here comes our peripheral definition
+peripheral {
+-- short (human-readable) name for the peripheral.
+	name = "Test IRQs";
+-- a longer description, if you want
+	description = "Embedded interrupt controller test.";
+-- name of the target VHDL entity to be generated
+	hdl_entity = "wb_test_interrupts";
+
+-- prefix for all the generated ports belonging to our peripheral
+	prefix = "TESTIRQ";
+
+
+	irq {
+		name = "Rising edge IRQ";
+		description = "Rising-edge triggered IRQ line: interrupt is triggered when logic state on the input changes from 0 to 1";
+		prefix = "ipe";
+		trigger = EDGE_RISING;
+	};
+
+	irq {
+		name = "Falling edge IRQ";
+		description = "Falling-edge triggered IRQ line: interrupt is triggered when logic state on the input changes from 1 to 0";
+		prefix = "ine";
+		trigger = EDGE_FALLING;
+	};
+	
+	irq {
+		name = "Level-0 IRQ";
+		description = "Hi-level triggered IRQ line: interrupt is active when state of the input is 0. Interrupt can be only cleared by changing the input state back to 1.";
+		prefix = "il0";
+		trigger = LEVEL_0;
+	};
+
+	irq {
+		name = "Level-1 IRQ";
+		description = "Lo-level triggered IRQ line: interrupt is active when state of the input is 1. Interrupt can be only cleared by changing the input state back to 0.";
+		prefix = "il1";
+		trigger = LEVEL_1;
+	};
+
+};

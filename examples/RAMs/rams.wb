@@ -1,0 +1,51 @@
+-- here comes our peripheral definition
+peripheral {
+
+-- short (human-readable) name for the peripheral.
+	name = "Test RAM memories";
+-- a longer description, if you want
+	description = "A slave containing various types of RAM memories";
+-- name of the target VHDL entity to be generated
+	hdl_entity = "wb_slave_test_rams";
+
+-- prefix for all the generated ports belonging to our peripheral
+	prefix = "RAMS";
+
+-- RAM 1: 256 32-bit words, using asynchronous clock, writable from both the bus and the core, with 1 address wrap bit (mirrored 2 times)
+	ram {
+		name = "Memory 1";
+		prefix = "mem1k";
+
+-- number of words of size 'width' in the RAM
+		size = 256;
+
+-- width (bit count) of the memory's data bus
+		width = 32;
+
+-- yes, we want the memory to be byte-addressable
+		byte_select = true;
+
+-- core ports work in different clock domain
+		clock = "clk1_i";
+
+-- here we define address wraparound. The memory address space is extended by 'wrap_bits' number of bits, thus mirroring the memory 2^(wrap_bits) times.
+-- This allows for wrap-around read/write operations passing from the end to the beginning of the memory with no extra math. Useful for implementing circular buffers, etc. 
+		wrap_bits = 1;
+
+-- access. Defined the same way as for the registers.
+		access_bus = READ_WRITE;
+		access_dev = READ_WRITE;
+	};
+
+-- simple, 2-kilobyte (1024 x 16 bits) memory with no extra features.
+	ram {
+		name = "Memory 2";
+		prefix = "mem2K";
+		size = 1024;
+		width = 16;
+		access_bus = READ_WRITE;
+		access_dev = READ_ONLY;
+	};
+
+
+};

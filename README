@@ -1,0 +1,6 @@
+This is the initial version of wbgen2. Requires Lua 5.1.4+. Enjoy it :)
+
+There is still some stuff to do:
+- add FIFOs
+- add documentation generator
+- CONSTANT registers

@@ -1,0 +1,123 @@
+-- here comes our peripheral definition
+peripheral {
+-- short (human-readable) name for the peripheral.
+	name = "GPIO Port";
+-- a longer description, if you want
+	description = "A sample 32-bit general-purpose bidirectional I/O port, explaining how to use SLV and PASS-THROUGH registers.";
+-- name of the target VHDL entity to be generated
+	hdl_entity = "wb_slave_gpio_port";
+
+-- prefix for all the generated ports belonging to our peripheral
+	prefix = "gpio";
+
+-- Pin direction register. Readable and writable from the bus, readable from the device.
+	reg {
+		name = "Pin direction register";
+		description = "A register defining the direction of the GPIO potr pins.";
+		prefix = "ddr";
+
+-- a single, anonymous field (no prefix) of type SLV.
+		field {
+			name = "Pin directions";
+			description = "Each bit in this register defines the direction of corresponding pin of the GPIO port. 1 means the pin is an OUTPUT, 0 means the pin is an INPUT";
+
+-- there is (deliberately) no prefix defined for this field. Since we have only one field in the register "ddr", we can omit the prefix - wbgen2 will produce signal names
+-- containing only prefixes of the peripheral and the parent register.
+
+-- type of our field - std_logic_vector
+			type = SLV;
+
+-- size - we want 32-bits wide port :)
+			size = 32;
+
+-- the field will be readable/writable from the Wishbone bus
+			access_bus = READ_WRITE;
+			
+-- .. and readable from the peripheral
+			access_dev = READ_ONLY;
+		};
+	};
+
+-- Pin input state register. Readable the bus, writable from the device.
+	reg {
+		name = "Pin input state register";
+		description = "A register containing the current state of input pins.";
+		prefix = "psr";
+
+-- a single, anonymous field (no prefix) of type SLV.
+		field {
+			name = "Pin input state";
+			description = "Each bit in this register reflects the state of corresponding GPIO port pin.";
+
+-- no prefix here as well (see above)
+
+-- type of our field - std_logic_vector
+			type = SLV;
+
+-- size - we want 32-bits wide port :)
+			size = 32;
+
+-- the field will be readable from the Wishbone bus
+			access_bus = READ_ONLY;
+			
+-- .. and writable from the peripheral
+			access_dev = WRITE_ONLY;
+		};
+	};
+
+-- Port output register. Shows how to use PASS-THROUGH regs
+	reg {
+		name = "Port output register";
+		description = "Register containing the output pin state.";
+		prefix = "pdr";
+
+-- a single, anonymous field (no prefix) of type PASS-THROUGH.
+		field {
+
+			name = "Port output value";
+
+-- the description isn't really necessary here :)		
+--			description = "Writing '1' sets the corresponding GPIO pin to '1'";
+
+-- type of our field - PASS_THROUGH. In this mode, the slave core is not storing the register value. Instead it provides the raw value 
+-- (taken from the wishbone data input) and a strobe signal, asserted for single clock cycle upon write operation to the register.
+-- The wishbone data input will be fed directly to gpio_pdr_o and each write operation to this register will generate a single-cycle positive
+-- pulse on gpio_pdr_wr_o signal.
+			type = PASS_THROUGH;
+
+			size = 32;
+
+-- access flags don't apply for the PASS-THROUGH regsiters, so we can omit them.
+		};
+	};
+
+
+-- Set output register. Shows how to use PASS-THROUGH regs
+	reg {
+		name = "Set output pin register";
+		description = "Writing '1' sets the corresponding GPIO pin to '1'";
+		prefix = "sopr";
+
+-- Our driver developer would want these two (SOPR and COPR) registers' addresses to be aligned to multiple of 4 :)
+		align = 4;
+
+		field {
+			name = "Set output pin register";
+			type = PASS_THROUGH;
+			size = 32;
+		};
+	};
+
+-- Clear output register. Designed identically as the previous reg.
+	reg {
+		name = "Clear output pin register";
+		description = "Writing '1' clears the corresponding GPIO pin";
+		prefix = "copr";
+
+		field {
+			name = "Clear output pin register";
+			type = PASS_THROUGH;
+			size = 32;
+		};
+	};
+};

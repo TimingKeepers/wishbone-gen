@@ -1,0 +1,4311 @@
+#!/usr/bin/lua
+
+-- Copyright, 2010 Tomasz Włostowski, CERN BE-Co-HT
+-- 
+-- This file is part of wbgen2.
+-- wbgen2 is free software; you can redistribute it and/or modify
+-- it under the terms of the GNU General Public License as published by
+-- the Free Software Foundation, version 2 (and only version 2, not any later version)
+--
+-- wbgen2 is distributed in the hope that it will be useful, but
+-- WITHOUT ANY WARRANTY; without even the implied warranty of
+-- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+-- General Public License for more details.
+--
+-- You should have received a copy of the GNU General Public License
+-- along with wbgen2; see the file COPYING. If not, write to the
+-- Free Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
+-- MA 02111-1307, USA.
+--
+
+wbgen2_version="0.6.0"
+
+options = {};
+options.reset_type = "asynchronous";
+options.target_interconnect = "wb-classic";
+options.register_data_output = false;
+options.lang = "vhdl";
+
+function my_dofile(name)
+	dofile("~/wbgen2_svn/wbgen2/"..name);
+end
+
+-- -*- Mode: LUA; tab-width: 2 -*-
+
+-- some constants --
+
+-- bus properties
+DATA_BUS_WIDTH = 32;
+SYNC_CHAIN_LENGTH = 3;
+
+-- constant definitions (block types)
+TYPE_PERIPH = 1;
+TYPE_REG = 2;
+TYPE_FIELD = 3;
+TYPE_FIFO = 4;
+TYPE_ENUM = 5;
+TYPE_RAM = 6;
+TYPE_IRQ = 7;
+
+ALL_REG_TYPES = {TYPE_REG, TYPE_RAM, TYPE_FIFO, TYPE_IRQ};
+
+-- FIFO register flags
+FIFO_FULL = 0x1;
+FIFO_EMPTY = 0x2;
+FIFO_ALMOST_FULL = 0x4;
+FIFO_ALMOST_EMPTY = 0x8;
+FIFO_CLEAR = 0x10;
+FIFO_COUNT = 0x20;
+
+-- field access flags
+READ_ONLY = 0x1;
+READ_WRITE = 0x2;
+WRITE_ONLY = 0x4;
+SET_ON_WRITE = 0x8;
+RESET_ON_WRITE = 0x10;
+
+-- field types
+MONOSTABLE = 0x1;
+BIT = 0x2;
+SLV = 0x4;
+SIGNED = 0x8;
+UNSIGNED = 0x10;
+ENUM = 0x20;
+PASS_THROUGH = 0x40;
+INTEGER = 0x80;
+EXPRESSION = 0x100;
+UNDEFINED = 0x200;
+
+-- reg LOAD types
+LOAD_INT = 1;
+LOAD_EXT = 2;
+
+-- access shorcuts
+ACC_RO_WO = 1;
+ACC_WO_RO = 2;
+ACC_RW_RW = 3;
+ACC_RW_RO = 4;
+
+FROM_WB = 1;
+TO_WB = 2;
+
+-- IRQ triggers
+EDGE_RISING = 0;
+EDGE_FALLING = 1;
+LEVEL_0 = 2;
+LEVEL_1 = 3;
+
+-- constructors for WB-file blocks
+function peripheral(x) 	x['__type']=TYPE_PERIPH; periph = x; 	return x; end
+function reg(x) 				x['__type']=TYPE_REG; 								return x; end
+function field(x) 			x['__type']=TYPE_FIELD; 							return x; end
+function fifo_reg(x) 		x['__type']=TYPE_FIFO;								return x; end
+function ram(x) 				x['__type']=TYPE_RAM;  								return x; end
+function enum(x) 				x['__type']=TYPE_ENUM; 								return x;	end
+function irq(x) 				x['__type']=TYPE_IRQ; 								return x; end
+
+
+-- function chceks if argument p is nil and if it is, throws fatal error message s
+function chk_nil(p,s)
+	if(p == nil) then
+		die(s.." expected.");
+	end
+	return p;
+end
+
+-- function calculates necessary amount of bits for a U2-encoded number of specified range.
+function range2bits(range)
+  local min = range[1];
+  local max = range[2];
+  local msize;
+    
+	if(math.abs(min) > math.abs(max)) then
+		msize = math.abs(min);
+  else
+		msize = math.abs(max);
+  end
+    
+  local logsize = math.ceil(math.log(msize) / math.log(2));
+
+  if(min < 0) then
+		logsize = logsize + 1;
+  end
+
+  return logsize;
+end
+
+-- function checks and calculates size of field "field" in register "reg"
+function calc_size(field, reg)
+-- monostable or bit-field? default size to 1 if not specified
+    if(field.type == MONOSTABLE or field.type == BIT) then
+			field.size = 1;
+    elseif (field.type == SLV) then
+-- SLV fields must have defined size
+			if(field.size == nil)  then
+		    die("no size declared for SLV-type field '".. field.name.."'");
+			end
+    elseif (field.type == SIGNED or field.type == UNSIGNED) then
+-- signed/unsigned fields must have defined either size or range.
+			if(field.range == nil and field.size == nil)  then
+		    die("neither range nor size declared for SIGNED/UNSIGNED-type field '".. field.name.."'");
+			end
+
+-- no size specified for signed/unsigned field? - calculate it from range attribute
+			if(field.size == nil) then
+				local nbits = range2bits(field.range);
+
+-- oops, wrong range?		
+				if(nbits == nil) then
+	  	  	die("misdeclared range for SIGNED/UNSIGNED-type field '".. field.name.."'");
+				end
+				field.size = nbits;
+			end    
+
+-- no enums yet
+    elseif(field.type == ENUM) then
+			die("ENUM-type fields are not yet supported. Sorry :(");    
+    end
+    
+-- calculate the total size (in bits) of the register
+    reg.total_size = reg.total_size + field.size;
+end
+
+-- iterates for all registers which type is in "accecepted_types", executing function "func" for each register
+function foreach_reg(accepted_types, func)
+	for i,v in ipairs(periph) do
+	  if(type(v) == 'table') then
+	  	if(v.__type ~= nil and (match(v.__type, accepted_types))) then
+			  func(v);
+			end
+    end
+	end
+end
+
+-- iterates for all fields in the peripheral (e.g. all the fields withing REG or FIFO blocks). Function "func" is executed for each field.
+function foreach_field(func)
+	foreach_reg ({TYPE_REG, TYPE_FIFO}, function(reg)
+    for j,field in ipairs(reg) do
+	    if (type(field) == 'table' and field.__type == TYPE_FIELD) then
+				func(field, reg, periph);
+	    end
+    end
+  end);
+end
+
+-- iterates for all fields of register "reg". Function "func" is executed for each field.
+function foreach_subfield(reg, func)
+  for j,field in ipairs(reg) do
+		if (type(field) == 'table' and field.__type == TYPE_FIELD) then
+			func(field, reg);
+		end
+  end
+end
+
+-- calculates aligned offset of field "field" closest to value of "offset".
+function align(field, offset)
+  local a;
+
+-- no alignment defined? just assume it's 1
+  if(field.align == nil) then a=1; else a=field.align; end 
+
+-- calculate the aligned offset    
+  local newofs = a  * math.floor((offset + a - 1) / a);
+
+  return newofs;
+end
+
+
+-- calculates offsets of field "field" in register "reg";
+function calc_field_offset(field, reg)
+
+-- align the field offset next to the current offset in the reg
+    local ofs = reg.current_offset;
+    ofs = align(field, ofs);    
+
+-- update the current offset
+    reg.current_offset = ofs + field.size;
+    field.offset = ofs;
+
+-- calculate the number of fields in the register
+		if(reg.num_fields == nil) then reg.num_fields = 0; end
+		reg.num_fields = reg.num_fields + 1;
+
+-- oops, we have too many fields (the total size exceeds the data bus width)    
+    if( reg.__type == TYPE_REG and reg.current_offset > DATA_BUS_WIDTH ) then
+			die ("Total size of register '"..reg.name.."' ("..reg.current_offset..") exceeds data bus width ("..DATA_BUS_WIDTH..")");
+    end
+end
+
+-- commits a suicide with error message "s"
+function die(s)
+    print ("Error: "..s);
+    os.exit(-1);
+end
+
+
+-- checks if value "var" is present in table "values".
+function match(var, values)
+	local i,v;
+    for i,v in pairs(values) do
+			if(var==v) then return true; end
+    end
+  return false;
+end
+
+-- simulates C statement: a = cond ? x : y -> a = csel(cond, x, y);
+function csel(cond, tr, fl)
+	if(cond) then
+		return tr;
+  else
+		return fl;
+  end
+end
+
+
+function fix_prefix(obj)
+	if(obj.c_prefix == nil or obj.hdl_prefix==nil) then
+	    if(obj.prefix == nil and obj.__type ~= TYPE_FIELD) then 
+				die ("No C/HDL prefix nor default prefix defined for field/reg/peripheral '"..obj.name.."'");
+	    end
+	    obj.c_prefix = obj.prefix;
+	    obj.hdl_prefix = obj.prefix;	
+	    return obj;
+	end
+    return obj;
+end
+
+function default_access(field, mytype, acc_bus, acc_dev)
+    if(field.type == mytype) then
+        if(field.access_bus == nil) then
+    	    field.access_bus = acc_bus;
+	end
+    
+        if(field.access_dev == nil) then
+	    field.access_dev = acc_dev;
+	end
+    end
+end
+
+function fix_access(field, reg)
+
+    if(reg.__type == TYPE_REG) then
+    
+	default_access(field, BIT, READ_WRITE, READ_ONLY);
+	default_access(field, SLV, READ_WRITE, READ_ONLY);
+	default_access(field, SIGNED, READ_WRITE, READ_ONLY);
+	default_access(field, UNSIGNED, READ_WRITE, READ_ONLY);
+	default_access(field, MONOSTABLE, WRITE_ONLY, READ_ONLY);
+	default_access(field, ENUM, READ_WRITE, READ_ONLY);
+	default_access(field, PASS_THROUGH, WRITE_ONLY, READ_ONLY);
+		
+	if(field.access ~= nil) then
+	    return;
+	end
+	
+	if(field.access_bus == READ_ONLY and field.access_dev == WRITE_ONLY) then
+	    field.access = ACC_RO_WO;
+	elseif (field.access_bus == WRITE_ONLY and field.access_dev == READ_ONLY) then
+	    field.access = ACC_WO_RO;
+	elseif (field.access_bus == READ_WRITE and field.access_dev == READ_WRITE) then
+	    field.access = ACC_RW_RW;
+	elseif (field.access_bus == READ_WRITE and field.access_dev == READ_ONLY) then
+	    field.access = ACC_RW_RO;
+	else
+	    die ("Illegal access flags combination for field '"..field.name.."' in register '"..reg.name.."'");
+	end 
+	
+    end
+end
+
+function check_max_size(reg)
+    if(reg.total_size > DATA_BUS_WIDTH and reg.__type == TYPE_REG) then 
+        die ("register ", reg.name, " size exceeds data bus witdh (", DATA_BUS_WIDTH, " bits)"); 
+    end
+end
+
+
+
+all_regs_size = 0;
+max_ram_addr_bits = 0;
+block_bits = 0;
+num_rams = 0;
+
+function log2 (x)
+    return math.floor(math.log(x) / math.log(2));
+end
+
+function log2up (x)
+    return math.ceil(math.log(x) / math.log(2));
+end
+
+function is_power_of_2(x)
+    for i=1,24 do
+	if(x == math.pow(2, i)) then return true; end
+    end
+    return false;
+end
+
+function calc_address_sizes(reg)
+-- for ordinary registers - just count them
+	if(reg.__type == TYPE_REG) then
+		all_regs_size = align(reg, all_regs_size) + 1;
+-- for FIFOS: 
+-- size of all FIFO fields (rounded up to multiple of 32 bits) + 1 extra FIFO control register
+  elseif (reg.__type == TYPE_FIFO) then
+		fifo_size = math.floor((reg.total_size + DATA_BUS_WIDTH - 1) / DATA_BUS_WIDTH) + 1;
+		all_regs_size = all_regs_size + fifo_size;
+		reg.num_fifo_regs = fifo_size;
+-- for RAMs:
+  elseif (reg.__type == TYPE_RAM) then
+		if(not is_power_of_2(reg.size)) then die ("RAM '"..reg.name.."': memory size must be a power of 2"); end
+
+		if (reg.wrap_bits == nil) then
+	    reg.wrap_bits = 0;
+		end
+	
+		reg.addr_bits = log2(reg.size * math.pow(2, reg.wrap_bits));
+	
+		if(max_ram_addr_bits < reg.addr_bits) then
+	    max_ram_addr_bits = reg.addr_bits;
+		end
+
+		if(reg.width > DATA_BUS_WIDTH) then
+	    die("RAM '"..reg.name.."' data width exceeds WB data bus width");
+		end
+	
+		reg.select_bits = csel(periph.regcount+periph.fifocount == 0, num_rams, num_rams + 1);
+		num_rams = num_rams + 1;
+
+    end 
+  regbank_address_bits = log2up (all_regs_size);
+end
+
+
+
+function assign_addresses()
+
+    local block_bits = math.max(max_ram_addr_bits, log2up(all_regs_size));
+    
+    local num_blocks = num_rams;
+    local i = 0;
+    if(all_regs_size > 0) then
+	num_blocks = num_blocks + 1;
+    end
+
+    local select_bits = log2up (num_blocks);
+    
+--    print("Total bits per block: "..block_bits..", select bits: "..select_bits);
+    
+    foreach_reg({TYPE_REG, TYPE_FIFO}, function(reg) 
+			if(reg.__type==TYPE_REG) then
+		    reg.base = align(reg, i);
+		    i=reg.base+1;
+			elseif(reg.__type == TYPE_FIFO) then
+		    reg.base = i;
+		    i=i+reg.num_fifo_regs;
+			end
+    end );
+    
+    address_bus_width = block_bits + select_bits;
+    address_bus_select_bits = select_bits;
+end
+
+function find_max(table, field)
+	local mval = 0;
+	local i,v;
+	for i,v in pairs(table) do if(type(v) == 'table' and v[field]~=nil and v[field] > mval) then mval = v[field]; end end
+	return mval;
+end
+
+
+
+function table_join(table_out, table_in)
+    local i,v;
+    
+    if(table_in == nil) then return; end
+    
+    for i,v in pairs(table_in) do
+	table.insert(table_out, v);
+    end
+end
+
+function tree_2_table(entry)
+	local tab = {};
+
+    foreach_reg({TYPE_REG, TYPE_RAM, TYPE_FIFO, TYPE_IRQ}, function(reg)
+			if(reg[entry] ~= nil) then
+		    if(type(reg[entry]) == 'table') then 
+					table_join(tab, reg[entry]);
+		    else
+					table.insert(tab, reg[entry]);
+		    end
+			end
+		
+			foreach_subfield(reg, function(field, reg) 
+		    if(field[entry] ~= nil) then 
+			    if(type(field[entry]) == 'table') then 
+						table_join(tab, field[entry]);
+			    else
+						table.insert(tab, field[entry]);
+			    end
+		    end
+			end);
+    end);
+	 
+	 return tab;
+end
+
+function remove_duplicates(t)
+  local i=1,v,j;
+   
+  while(t[i] ~= nil) do
+		for j=1,i-1 do if(t[j]==t[i]) then table.remove(t, i); i=i-1; end end
+		i=i+1;
+	end
+end
+
+function wbgen_count_subblocks()
+  local ramcount = 0;
+  local fifocount = 0;
+  local regcount = 0;
+  local irqcount = 0;
+
+  foreach_reg({TYPE_RAM}, function(reg) ramcount = ramcount + 1; end);
+  foreach_reg({TYPE_REG}, function(reg) regcount = regcount + 1; end);
+  foreach_reg({TYPE_FIFO}, function(reg) fifocount = fifocount + 1; end);
+  foreach_reg({TYPE_IRQ}, function(reg) irqcount = irqcount + 1; end);
+      
+	periph.ramcount = ramcount;
+  periph.fifocount = fifocount;
+  periph.regcount = regcount;
+  periph.irqcount = irqcount;
+  
+  if(ramcount + fifocount + regcount + irqcount == 0) then
+  	die("Can't generate an empty peripheral. Define some regs, RAMs, FIFOs or IRQs, please...");
+  end
+end
+
+
+
+
+-- wbgen2, (c) 2010 Tomasz Wlostowski
+--                  CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
+
+
+------------------------------
+-- HDL syntax tree constructors
+------------------------------
+
+-- assignment: dst <= src;
+function va (dst, src)
+  local s={};
+  s.t="assign";
+  s.dst=dst;
+  s.src=src;
+  return s;
+end
+
+-- index: name(h downto l)
+
+function vi(name, h, l)
+ local s={};
+ s.t="index";
+ s.name=name;
+ s.h=h;
+ s.l=l;
+ return s;
+end
+
+-- instance of a component
+function vinstance(name, component, maps)
+ local s={};
+ s.t="instance";
+ s.name=name;
+ s.component = component;
+ s.maps = maps;
+ return s;
+end
+
+-- port map
+function vpm(to, from)
+ local s={};
+ s.t="portmap";
+ s.to = to;
+ s.from = from;
+ return s;
+
+end
+
+-- generic map
+function vgm(to, from)
+ local s={};
+ s.t="genmap";
+ s.to = to;
+ s.from = from;
+ return s;
+
+end
+
+-- combinatorial process: process(sensitivity_list) begin {code} end process;
+function vcombprocess(slist, code)
+ local s={};
+ s.t="combprocess";
+ s.slist = slist;
+ s.code=code;
+ return s;
+end
+
+
+
+-- synchronous process: process(clk, rst) begin {code} end process; 
+function vsyncprocess(clk, rst, code)
+ local s={};
+ s.t="syncprocess";
+ s.clk=clk;
+ s.rst=rst;
+ s.code=code;
+ return s;
+end
+
+
+
+-- reset in process
+function vreset(level, code)
+ local s={};
+ s.t="reset";
+ s.level=level;
+ s.code=code;
+ return s;
+end
+
+function vposedge(code)
+ local s={};
+ s.t="posedge";
+ s.code=code;
+ return s;
+end
+
+function vif(cond, code, code_else)
+ local s={};
+ s.t="if";
+ s.cond={ cond };
+ s.code=code;
+ s.code_else=code_else;
+ return s;
+end
+
+function vequal(a,b)
+ local s={};
+ s.t="eq";
+ s.a=a;
+ s.b=b;
+ return s;
+end
+
+function vand(a,b)
+ local s={};
+ s.t="and";
+ s.a=a;
+ s.b=b;
+ return s;
+end
+
+function vnot(a)
+ local s={};
+ s.t="not";
+ s.a=a;
+ return s;
+end
+
+function vswitch(a, code)
+ local s={};
+ s.t="switch";
+ s.a=a;
+ s.code=code;
+ return s;
+end
+
+function vcase(a, code)
+ local s={};
+ s.t="case";
+ s.a=a;
+ s.code=code;
+ return s;
+end
+
+function vcasedefault(code)
+ local s={};
+ s.t="casedefault";
+ s.code=code;
+ return s;
+end
+
+function vcomment(str)
+ local s={};
+ s.t="comment";
+ s.str=str;
+ return s;
+end
+
+function vsub(a,b)
+ local s={};
+ s.t="sub";
+ s.a=a;
+ s.b=b;
+ return s;
+end
+
+function vothers(value)
+ local s={}
+ s.t="others";
+ s.val=value;
+ return s;
+end
+
+function vopenpin()
+ local s={}
+ s.t="openpin";
+ return s;
+end
+
+function vundefined()
+ local s={}
+ s.t="undefined";
+ return s;
+end
+
+
+-- constructor for a HDL signal
+function signal(type, nbits, name, comment)
+    local t = {}
+    t.comment = comment;
+    t.type = type;
+    t.range= nbits;
+    t.name = name;
+    return t;
+end
+
+-- constructor for a HDL port
+function port(type, nbits, dir, name, comment, is_wb)
+    local t = {}
+		t.comment = comment;
+    t.type = type;
+    t.range= nbits;
+    t.name = name;
+    t.dir = dir;
+
+
+    if(is_wb ~= nil and is_wb) then
+    	t.is_wb = true;
+    else
+    	t.is_wb = false;
+    end
+    return t;
+end
+
+global_ports = {};
+global_signals = {};
+
+function add_global_signals(s)
+	table_join(global_signals, s);
+end
+
+function add_global_ports(p)
+	table_join(global_ports, p);
+end
+
+
+function cgen_build_clock_list()
+    local allclocks = tree_2_table("clock");
+    local i,v;
+    local clockports = {};
+    
+    remove_duplicates(allclocks);
+    
+    for i,v in pairs(allclocks) do
+    	table.insert(clockports, port(BIT, 0, "in", v, "", true));
+    end
+
+    return clockports;
+end
+
+function cgen_build_siglist()
+	local siglist = {};
+	local i,v;
+	local s;
+	
+	siglist = tree_2_table("signals");
+	
+	table_join(siglist, global_signals);
+	
+	return siglist;
+end
+
+
+
+function cgen_build_portlist()
+		local portlist = {};
+    table_join(portlist, global_ports);
+    table_join(portlist, cgen_build_clock_list());
+    table_join(portlist, tree_2_table("ports"));
+		return portlist;
+end
+
+function cgen_find_sigport(name)
+	for i,v in pairs(g_portlist) do if(name == v.name) then return v; end end
+	for i,v in pairs(g_siglist) do if(name == v.name) then return v; end end
+	
+	die("cgen internal error: undefined signal '"..name.."'");
+	
+	return nil;
+end
+
+function cgen_build_signals_ports()
+	g_portlist = cgen_build_portlist();
+	g_siglist = cgen_build_siglist();
+end
+
+cur_indent = 0;
+
+function indent_zero()
+	cur_indent=0;
+end
+
+function indent_left()
+	cur_indent = cur_indent - 1;
+end
+
+function indent_right()
+	cur_indent = cur_indent + 1;
+end
+
+
+function cgen_new_snippet()
+	emit_code = "";
+end
+
+function emiti()
+	local i;
+	for i = 1,cur_indent do emit_code=emit_code.."  "; end
+end
+
+function emit(s)
+	local i;
+	
+	for i = 1,cur_indent do emit_code=emit_code.."  "; end
+	emit_code=emit_code..s.."\n";
+end
+
+function emitx(s)
+	emit_code=emit_code..s;
+end
+
+function cgen_get_snippet()
+  return emit_code;
+end
+
+function cgen_write_current_snippet()
+	output_code_file.write(output_code_file, emit_code);
+end
+
+function cgen_write_snippet(s)
+	output_code_file.write(output_code_file, s);
+end
+
+
+function cgen_generate_init(filename)
+	output_code_file = io.open(filename, "w");
+	if(output_code_file == nil) then
+		die("Can't open code output file: "..filename);
+	end
+end
+
+function cgen_generate_done()
+	output_code_file.close(output_code_file);
+end
+
+function cgen_gen_vlog_constants(filename)
+	local file = io.open(filename, "w");
+ 
+ 	if(file == nil) then
+ 		die("can't open "..filename.." for writing.");
+ 	end
+	 
+	  foreach_reg({TYPE_REG}, function(reg) 
+				file.write(file, string.format("`define %-30s %d'h%x\n", "ADDR_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) * reg.base));
+			end);
+		
+		
+		foreach_reg({TYPE_RAM}, function(reg) 
+				local base = reg.select_bits * 
+										 math.pow (2, address_bus_width - address_bus_select_bits);				
+				file.write(file, string.format("`define %-30s %d'h%x\n", "BASE_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) *base));
+				file.write(file, string.format("`define %-30s 32'h%x\n", "SIZE_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), reg.size));
+		end);
+
+	io.close(file);
+end
+-- -*- Mode: LUA; tab-width: 2 -*-
+
+-- wbgen2, (c) 2010 Tomasz Wlostowski/CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
+
+-- File: cgen_vhdl.lua
+--
+-- The VHDL code generator.
+--
+
+-- conversion table between VHDL data types and wbgen2 internal data types
+fieldtype_2_vhdl={};
+fieldtype_2_vhdl[BIT]="std_logic";
+fieldtype_2_vhdl[MONOSTABLE]="std_logic";
+fieldtype_2_vhdl[SIGNED] = "signed";
+fieldtype_2_vhdl[UNSIGNED] = "unsigned";
+fieldtype_2_vhdl[ENUM] = "std_logic_vector";
+fieldtype_2_vhdl[SLV] = "std_logic_vector";
+
+-- generates a string containing VHDL-compatible numeric constant of value [value] and size [numbits]
+function gen_vhdl_bin_literal(value, numbits)
+    local str ='\"';
+    local i,n,d,r;
+    
+    n=value;
+    r=math.pow(2, numbits-1);
+    
+    for i=1,numbits do
+			d=math.floor(n/r);
+			str=str..csel(d>0,"1","0");
+			n=n%r;
+			r=r/2;
+    end
+    return str..'\"';
+end
+
+
+-- function generates a VHDL file header (some comments and library/package include definitions).
+function cgen_vhdl_header()
+    emit("---------------------------------------------------------------------------------------");
+    emit("-- Title          : Wishbone slave core for "..periph.name);
+    emit("---------------------------------------------------------------------------------------");
+    emit("-- File           : "..options.output_hdl_file);
+    emit("-- Author         : auto-generated by wbgen2 from "..input_wb_file);
+    emit("-- Created        : "..os.date());
+    emit("-- Standard       : VHDL'87");
+    emit("---------------------------------------------------------------------------------------");
+    emit("-- THIS FILE WAS GENERATED BY wbgen2 FROM SOURCE FILE "..input_wb_file);
+    emit("-- DO NOT HAND-EDIT UNLESS IT'S ABSOLUTELY NECESSARY!");
+    emit("---------------------------------------------------------------------------------------");
+		emit("");
+		emit("library ieee;");
+		emit("use ieee.std_logic_1164.all;");
+		emit("use ieee.numeric_std.all;");
+
+-- do we have RAMs or FIFOs? - if yes, include the wbgen2 components library.
+		if(periph.ramcount > 0 or periph.fifocount > 0 or periph.irqcount > 0) then
+			emit("library wbgen2;");
+			emit("use wbgen2.wbgen2_pkg.all;");
+		end
+
+		emit("");
+end
+
+
+-- function generates VHDL entity header (ports and generics) and beginning of ARCHITECTURE block (signal and constant definitions).
+function cgen_vhdl_entity()
+	local last;
+
+	emit ("entity "..periph.hdl_entity.." is");
+	indent_right();
+  emit ("port (");
+	indent_right();
+
+-- emit the ports.
+  for i=1,table.getn(g_portlist) do
+		local port = g_portlist[i];
+
+-- check if this port is the last one, so we won't put a semicolon after it's definition
+		if(i == table.getn(g_portlist)) then last = true; else last = false; end
+
+-- if we have a comment associated with current port, let's emit it before the port definition.
+		if(port.comment ~= nil) then
+			emitx("-- "..port.comment.."\n");
+		end
+	
+-- generate code for the port
+		local line = string.format("%-40s : %-6s %s", port.name, port.dir, fieldtype_2_vhdl[port.type]);
+
+		if(port.range > 0) then
+			line = line.."("..(port.range-1).." downto 0)";
+		end    
+
+-- eventually append a semicolon
+		line=line..csel(last, "", ";");
+
+-- and spit out the line
+		emit(line);
+  end
+
+    
+	indent_left();
+ 	emit(");");
+	indent_left();
+	emit("end "..periph.hdl_entity..";");
+	emit("");
+
+-- generate the ARCHITECTURE block with signal definitions
+
+	emit("architecture syn of "..periph.hdl_entity.." is");
+	emit("");
+
+-- we do it the same way as for the ports. 
+	for i,v in pairs (g_siglist) do
+		s=string.format("signal %-40s : %-15s", v.name, fieldtype_2_vhdl[v.type]);
+		if(v.range > 0) then
+			s=s..string.format("(%d downto 0)", v.range-1);
+		end
+		s=s..";";
+		emit(s);
+	end
+	emit("");
+
+	emit("begin");
+	indent_right();
+	
+end
+
+-- function generates the ending of VHDL file - in our case an END statement, closing the single ARCHITECTURE block.
+function cgen_vhdl_ending()
+	indent_left();
+	emit("end syn;");
+end
+
+-- This is the main code generator function. It takes a syntax tree [tree], and traverses it recursively, producing VHDL code.
+-- Note that it supports only a small subset of VHDL language which is used by slave cores. All the following functions are private.
+function cgen_generate_vhdl_code(tree)
+
+	-- function searches for a subnode of type [t] in node [node].
+	function find_code(node, t)
+		for i,v in ipairs(node) do if ((v.t ~= nil) and (v.t == t)) then return v; end end
+		return nil;
+	end
+
+	-- function generates a synchronous process, e.g. a process which looks like:
+	-- process (clk, rst)
+	-- if(rst)
+	-- [put code from vreset subnode here]
+	-- elsif rising_edge(clk)
+	-- [put code from vposedge subnode here]
+	-- end 
+
+	function cgen_vhdl_syncprocess(node)
+		emit("process ("..node.clk..", "..node.rst..")");
+		emit("begin");
+		indent_right();
+
+	-- search for reset and posedge subnodes. 			
+		local vrst = find_code(node.code, "reset");
+		local vpe = find_code(node.code, "posedge");
+
+	-- no posedge block - then what our process is supposed to be doing? :D			
+		if(vpe == nil) then die("vhdl code generation error: no vposedge defined for vsyncprocess"); end
+			
+	-- generate the process body depending on the type of reset (sync/async)
+		if(options.reset_type == "asynchronous") then
+			if(vrst ~= nil) then
+				emit("if ("..node.rst.." = '"..vrst.level.."') then ");
+				indent_right();
+
+	-- recursively emit the vreset subnode
+				recurse(vrst.code);
+				indent_left();
+	
+				emit("elsif rising_edge("..node.clk..") then");
+				indent_right();
+		
+			else
+				emit("if rising_edge("..node.clk..") then");			
+				indent_right();
+			end
+
+	-- -- recursively emit the vposedge
+			recurse(vpe.code);		
+			indent_left();
+	 	  emit("end if;");
+			
+		else -- the same as above, but with synchronous reset
+			emit("if rising_edge("..node.clk..") then");
+			indent_right();
+			
+			if(vrst ~= nil) then
+				 emit("if ("..node.rst.." = '"..vrst.level.."') then ");
+				 indent_right();
+				 recurse(vrst.code);
+				 indent_left();
+				 emit("else ");
+			end
+	 		  
+			indent_right();
+			recurse(vpe.code); 		  
+			indent_left();
+			emit("end if;");
+			indent_left();
+			emit("end if;");
+		end
+		indent_left();
+
+		emit("end process;");	
+		emit("");
+		emit("");
+	end
+
+-- emits a VHDL combinatorial process
+	function cgen_vhdl_combprocess(node)
+		local first_one = true;
+		emiti();
+		emitx("process (");
+
+		for i,v in pairs(node.slist) do
+			if(first_one) then
+				first_one = false;
+			else
+				emitx(", ");
+			end
+			emitx(v);
+		end
+		
+		emit(")");
+		emit("begin");
+
+		indent_right();
+		recurse(node.code);
+		indent_left();
+
+		emit("end process;");	
+		emit("");
+		emit("");
+	end
+
+
+	-- function takes a node and determines it's type, value and range 
+	function node_typesize(node)
+		local ts = {};
+		local sig;
+
+--		print("tsize",node);
+
+		ts.node = node;
+
+	-- if it's a direct signal or a numeric constant, it simply returns it.
+
+	-- our node is a LUA table, which most likely means that it's a non-terminal leaf of syntax tree.
+		if(type(node) == "table") then
+
+	-- if the subnode is of type vi (indexed signal)
+			if(node.t ~= nil and node.t == "index") then
+
+	-- find the definition of the signal to determine its VHDL type.
+				sig = cgen_find_sigport(node.name);
+
+	-- and extract indexing bondaries (h downto l)
+				ts.h=node.h;
+				ts.l=node.l;
+				ts.name=sig.name;
+				ts.type=sig.type;
+				
+					if(ts.l == nil) then
+						ts.size = 1;
+						ts.type = BIT;
+					else
+						ts.size = ts.h-ts.l+1;
+					end
+			
+				return ts;
+			elseif(node.t ~= nil and node.t == "undefined") then
+				ts.type = UNDEFINED;
+				return ts;
+
+	-- if the subnode is not of "vi" type, treat is as an expression (arithmetic, logic, etc.)
+		 	else
+					ts.type = EXPRESSION;
+					ts.code = node;
+					return ts;
+			end
+
+	-- node is a LUA string - it's a signal or port. Determine its type, range and return it to the caller.
+		 elseif(type(node) == "string") then
+			sig = cgen_find_sigport(node);
+			ts.size = sig.range;
+			ts.type = sig.type;
+			ts.name = node;
+			return ts;
+
+	-- node is a LUA number - just return it, the caller should take care of range/type determination depending on the assignment target.
+		 elseif(type(node) == "number") then
+			ts.type = INTEGER;
+			ts.name = node;
+			ts.size = 0;
+			return ts;
+		else 
+			die("vhdl cgen internal error: node_typesize got an unknown node.");
+		end
+	end
+
+	-- generates the signal name with subrange (if applies): signame, signame(h downto l) or signame(h). 
+	function gen_subrange(t)
+		-- node is a VHDL "open" pin declaration?
+		if(type(t.node) == "table" and t.node.t == "openpin") then
+			return "open";
+		end
+
+		if(t.h ~= nil and t.l == nil) then
+			return t.name.."("..t.h..")";
+		elseif(t.h ~= nil and t.l ~= nil) then
+			return t.name.."("..t.h.." downto "..t.l..")";
+		else
+			return t.name;
+		end
+	end
+
+	-- calculates bit-size of a signal
+	function calc_size(t)
+		if(t.h ~= nil and t.l == nil) then
+			return 1;
+		elseif(t.h ~= nil and t.l ~= nil) then
+			return t.h-t.l+1; 
+		else
+			local sig= cgen_find_sigport(t.name);
+			return sig.range;
+		end
+	end
+
+	-- WARNING! UGLY CODE!
+	-- generates a VHDL type-conversion code for assignment between tsd (destination node) and tss (source node).
+	function gen_vhdl_typecvt(tsd, tss)
+
+	-- types match? Coool, we have nothing to do
+		if(tsd.type == tss.type) then 
+			return(gen_subrange(tss));
+
+		elseif (tss.type == UNDEFINED) then
+			return "'X'"
+	-- dest: bit/slv/signed/unsigned <= src: numeric_constant;
+		elseif (tss.type == INTEGER) then
+
+			if(tsd.type == BIT) then 
+				return("'"..tss.name.."'");
+			elseif(tsd.type == SLV) then
+				return("std_logic_vector(to_unsigned("..tss.name..", "..calc_size(tsd).."))");
+			elseif(tsd.type == SIGNED) then
+				return("to_signed("..tss.name..", "..calc_size(tsd)..")");
+			elseif(tsd.type == UNSIGNED) then
+				return("to_unsigned("..tss.name..", "..calc_size(tsd)..")");
+			else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
+
+	-- dest: bit <= src: SLV
+		elseif (tss.type == BIT) then
+
+			if(tsd.type == SLV) then
+				return(gen_subrange(tss.name));
+			else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
+
+		elseif (tss.type == SIGNED or tss.type == UNSIGNED) then
+
+	-- dest: slv <= src: signed/unsigned
+			if(tsd.type == SLV) then
+				return("std_logic_vector("..gen_subrange(tss)..")");
+			else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
+
+		elseif (tss.type == SLV) then
+
+	-- dest: signed/unsigned <= src: slv
+			if(tsd.type == SIGNED) then
+				return("signed("..gen_subrange(tss)..")");
+			elseif (tsd.type == UNSIGNED) then
+--					print(tss);
+				return("unsigned("..gen_subrange(tss)..")");
+			else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
+
+		else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
+	end
+
+	-- function generates VHDL code for assignment-type node (node.src <= node.dst).
+	function cgen_vhdl_assign(node)
+	-- determine types and ranges of source and destination node.
+		local tsd = node_typesize(node.dst);
+		local tss = node_typesize(node.src);
+
+	-- source node is an expression? - recurse it
+		if(tss.type == EXPRESSION) then
+			emiti();
+		--	print(gen_subrange(tsd));
+			emitx(gen_subrange(tsd).." <= ");
+			recurse({tss.code});
+			emitx(";\n");
+		else
+	-- not an expression? - assign the destination with proper type casting.
+		--	print(gen_subrange(tsd));
+			emit(gen_subrange(tsd).." <= "..gen_vhdl_typecvt(tsd, tss)..";");
+		end
+	end
+
+	-- function generates an if..else..end if control block.
+	function cgen_vhdl_if(node)
+
+		emiti(); emitx("if (");
+	-- recurse the condition block
+		recurse(node.cond);
+		emitx(") then\n");
+
+	-- "if..else" construct
+		if(node.code_else ~= nil) then
+			indent_right();		recurse(node.code);		indent_left();
+			emit("else");
+			indent_right();		recurse(node.code_else);		indent_left();
+			emit("end if;");
+	-- just "if" construct
+		else
+			indent_right();	recurse(node.code);	indent_left();
+			emit("end if;");
+		end
+	end
+
+	-- function generates a NOT unary expression.
+	function cgen_vhdl_not(node)
+	-- check type of node to be NOTed
+		local tsa = node_typesize(node.a);
+
+		emitx("not ");
+
+	-- recurse
+		if(tsa.type == EXPRESSION) then
+			emitx("("); recurse({node.a}); emitx(")");
+		else
+	-- or emit the value/signal
+			emitx(gen_subrange(tsa));
+		end
+	end
+
+
+	-- function generates code for a VHDL binary expression.
+	function cgen_vhdl_binary_op(node)
+
+
+		local tsa = node_typesize(node.a);
+		local tsb = node_typesize(node.b);
+		local op=node.t;
+
+
+	-- emit the left-side operand
+		if(tsa.type == EXPRESSION) then
+			emitx("("); recurse({node.a}); emitx(")");
+		else
+			emitx(gen_subrange(tsa));
+		end
+
+	-- emit the operator
+		if(op=="eq") then emitx(" = "); end
+		if(op=="and") then emitx(" and "); end
+		if(op=="or") then emitx(" or "); end
+		if(op=="sub") then emitx(" - "); end
+		if(op=="add") then emitx(" + "); end
+
+	-- ..and the right-side operand
+		if(tsb.type == EXPRESSION) then
+			emitx("("); recurse({node.b}); emitx(")");
+		else
+			emitx(gen_vhdl_typecvt(tsa, tsb));
+		end
+	end
+
+
+	-- 
+	function cgen_vhdl_comment(node)
+	--	print("COMMENT: "..node.str);
+		emitx("-- "..node.str.."\n");
+	end
+
+
+	-- function generates VHDL switch/case statement
+	function cgen_vhdl_switch(node)
+
+		local tsa = node_typesize(node.a);
+
+		emiti(); emitx("case ");
+
+	-- recurse the case header: case (expression) is
+		if(tsa.type == EXPRESSION) then
+			emitx("("); recurse({node.a}); emitx(")");
+		else
+			local tsb = {};
+			tsb.type = SLV;
+			emitx(gen_vhdl_typecvt(tsb, tsa));
+		end	
+
+		emitx(" is\n");
+
+	-- iterate all the subnodes
+		for i,v in pairs(node.code)  do
+
+	-- it's a case match:
+			if(v.t == "case") then			
+				emit("when "..gen_vhdl_bin_literal(v.a, tsa.size).." => ");
+				indent_right();
+				recurse({v.code});
+				indent_left();
+
+	-- it's a default match: (when others =>)
+			elseif(v.t == "casedefault") then			
+				emit("when others =>");
+				indent_right();
+				recurse({v.code});
+				indent_left();
+			end	
+		end
+
+		emit("end case;");
+	end
+
+
+	-- function instantiates and wires a VHDL component.
+	function cgen_vhdl_instance(node)
+		local num_pmaps=0;
+		local num_gmaps=0;
+		local n;
+
+	-- emit the instatiation code
+		emit(node.name.." : "..node.component);
+
+	-- count the number of PORT MAPs and GENERIC MAPs
+		for i,v in pairs(node.maps) do
+			if(v.t=="genmap") then
+				num_gmaps=num_gmaps+1;
+			elseif(v.t == "portmap") then
+				num_pmaps=num_pmaps+1;
+			end 
+		end
+	
+	-- do we gave GENERIC MAPs?	
+		if(num_gmaps > 0) then
+			indent_right();
+			emit("generic map (");
+			indent_right();
+			n=1;
+
+	-- then emit all of them
+			for i,v in pairs(node.maps) do
+				if(v.t=="genmap") then
+				emit(string.format("%-20s => %s", v.to, v.from)..csel(n==num_gmaps,"",","));
+				n=n+1;
+				end
+			end	
+			indent_left();
+			emit(")");
+			indent_left();		
+		end	
+
+	-- do we have PORT MAPs?
+		if(num_pmaps > 0) then
+			indent_right();
+			emit("port map (");
+			indent_right();
+			n=1;
+			for i,v in pairs(node.maps) do
+				if(v.t=="portmap") then
+				local tsd = node_typesize(v.from);
+				emit(string.format("%-20s => %s", v.to, gen_subrange(tsd))..csel(n==num_pmaps,"",","));
+				n=n+1;
+				end
+			end	
+			indent_left();
+			emit(");");
+			indent_left();		
+		end	
+
+		emit("");
+	end
+
+	-- generates VHDL "others => value" construct
+	function cgen_vhdl_others(node)
+		emitx("(others => '"..node.val.."')");
+	end
+	
+	-- generates VHDL "pin => open" mapping
+	function cgen_vhdl_openpin(node)
+		emitx("open");
+	end
+	
+	-- the main recursive traversal function.
+	function recurse(node)
+
+		local generators = {
+			["comment"] 			= cgen_vhdl_comment;
+			["syncprocess"] 	= cgen_vhdl_syncprocess;
+			["combprocess"] 	= cgen_vhdl_combprocess;
+			["assign"]			 	= cgen_vhdl_assign;
+			["if"]			 			= cgen_vhdl_if;
+			["eq"]					 	= cgen_vhdl_binary_op;
+			["add"]					 	= cgen_vhdl_binary_op;		
+			["sub"]					 	= cgen_vhdl_binary_op;
+			["or"]					 	= cgen_vhdl_binary_op;
+			["and"]					 	= cgen_vhdl_binary_op;
+			["not"]						= cgen_vhdl_not;
+			["switch"] 				= cgen_vhdl_switch;
+			["instance"]			= cgen_vhdl_instance;
+			["others"]				= cgen_vhdl_others;
+ 			["openpin"]				= cgen_vhdl_openpin;
+		};
+
+	--	print(node);
+
+		for i,v in pairs(node) do
+			-- no type? probably just a block of code. recurse it deeper.
+
+			if(v.t == nil) then
+				recurse(v);
+			else
+				local func = generators[v.t];
+		--		print(v.t);
+				if(func == nil) then
+					die("Unimplemented generator: "..v.t);
+				end
+				func(v);
+			end
+		end
+	end
+
+-- here we go. Let's create a new snippet of code. VHDL generator is single-pass, so we'll need only one snippet.
+	cgen_new_snippet();
+-- output the header,
+	cgen_vhdl_header();
+-- .. the entity declaration
+	cgen_vhdl_entity();
+-- the main code
+	recurse(tree);
+-- the ending
+	cgen_vhdl_ending();
+
+-- and flush the snippet to the output file :)
+	cgen_write_current_snippet();
+
+-- voila, we're done!
+end
+
+
+-- wbgen2, (c) 2010 Tomasz Wlostowski/CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
+
+-- File: cgen_vhdl.lua
+-- The Verilog code generator
+
+
+-- verilog signal types
+VLOG_WIRE = 1;
+VLOG_REG = 2;
+
+-- does the obvious thing...
+function cgen_verilog_header()
+    emit("//////////////////////////////////////////////////////////////////////////////////////");
+    emit("// Title          : Wishbone slave core for "..periph.name);
+    emit("//////////////////////////////////////////////////////////////////////////////////////");
+    emit("// File           : "..options.output_hdl_file);
+    emit("// Author         : auto-generated by wbgen2 from "..input_wb_file);
+    emit("// Created        : "..os.date());
+    emit("// Standard       : Verilog 2001");
+    emit("//////////////////////////////////////////////////////////////////////////////////////");
+    emit("// THIS FILE WAS GENERATED BY wbgen2 FROM SOURCE FILE "..input_wb_file);
+    emit("// DO NOT HAND-EDIT UNLESS IT'S ABSOLUTELY NECESSARY!");
+    emit("//////////////////////////////////////////////////////////////////////////////////////");
+		emit("");
+end
+
+-- generates verilog module header with port list.
+function cgen_verilog_module()
+	local last;
+
+	indent_zero();
+	emit ("module "..periph.hdl_entity.." (");
+	indent_right();
+
+  for i=1,table.getn(g_portlist) do
+		local port = g_portlist[i];
+		  
+		if(i == table.getn(g_portlist)) then
+			last = true;
+		else
+		  last = false;
+		end
+
+		if(port.comment ~= nil) then
+			emitx("// "..port.comment.."\n");
+		end
+	
+	
+		local dirstr;
+		
+		if(port.dir=="in") then
+		 dirstr="input";
+		elseif(port.dir=="out") then
+		 dirstr="output";
+		elseif(port.dir=="inout") then
+		 dirst="inout";
+		end
+
+		if(port.vlog_type == VLOG_REG) then
+		 dirstr=dirstr.." reg";
+		end
+
+		local rangestr="";
+
+		if(port.range > 0) then
+		  rangestr = "["..(port.range-1)..":0]";
+		end    
+
+		local line = string.format("%-11s %-6s %s", dirstr, rangestr, port.name);
+		line=line..csel(last, "", ",");
+		emit(line);
+  end
+    
+	indent_left();
+ 	emit(");");
+	indent_left();
+	emit("");
+
+	for i,v in pairs (g_siglist) do
+
+		local rwire=csel(v.vlog_type==VLOG_REG, "reg", "wire");
+		local rangestr="";
+
+		if(v.range > 0) then
+			rangestr=string.format("[%d:0] ", v.range-1);
+		end
+
+		emit(string.format("%-5s %-7s %s;", rwire, rangestr, v.name));
+	end
+	emit("");
+
+	indent_right();
+	
+end
+
+function cgen_verilog_ending()
+	indent_left();
+	emit("endmodule");
+end
+
+
+
+
+-- Generates the vlog code from syntax tree <tree>, writing it into previously chosen file.
+function cgen_generate_verilog_code(tree)
+
+	local inside_process = false;
+
+	function find_code(node, t)
+		for i,v in ipairs(node) do if ((v.t ~= nil) and (v.t == t)) then return v; end end
+		return nil;
+	end
+
+	function cgen_verilog_syncprocess(node)
+		local vrst = find_code(node.code, "reset");
+
+		if(vrst ~= nil and options.reset_type=="asynchronous") then
+	 		emit("always @(posedge "..node.clk.." or "..csel(vrst.level==0, "negedge", "posedge").." rst_n_i) begin")
+	 	else
+	 		emit("always @(posedge "..node.clk..") begin");
+	 	end
+
+		indent_right();
+
+		inside_process = true;
+
+		local vpe = find_code(node.code, "posedge");
+			
+		if(vpe == nil) then die("verilog code generation error: no vposedge defined for vsyncprocess"); end
+
+		if(vrst ~= nil) then
+			emit("if ("..node.rst.." == 1'b"..vrst.level..") begin ");
+			indent_right();
+			recurse(vrst.code);
+			indent_left();
+			emit("end else begin");
+			indent_right();
+		end
+
+		recurse(vpe.code);		
+
+		if(vrst ~= nil) then
+			indent_left();
+			emit("end");
+	 	end
+
+		indent_left();
+		emit("end");	
+		emit("");
+
+		inside_process = false;
+
+	end
+
+	function node_typesize(node)
+		local ts = {};
+		local sig;
+
+		ts.node = node;
+
+		if(type(node) == "table") then
+			if(node.t ~= nil) then
+			 if(node.t == "index") then
+					sig = cgen_find_sigport(node.name);
+				--	print("VI ", node.name, node.h, node.l);
+					ts.h=node.h;
+					ts.l=node.l;
+					ts.sig=sig;
+					ts.name=sig.name;
+					ts.type=sig.type;
+
+
+					if(ts.l ~= nil) then
+						 ts.size = ts.h-ts.l+1;
+					else
+						 ts.size = 1;
+				 end
+			
+					return ts;			
+				elseif (node.t == "others") then
+					ts.type = OTHERS;
+					ts.size = 0;
+					ts.value = node.val;
+					return ts;
+			 	elseif(node.t == "undefined") then
+			 		
+					ts.type = UNDEFINED;
+					return ts;
+				else
+					ts.type = EXPRESSION;
+					ts.code = node;
+					return ts;
+				end
+			 end
+		 elseif(type(node) == "string") then
+			sig = cgen_find_sigport(node);
+			ts.sig=sig;
+			ts.size = sig.range;
+			ts.type = sig.type;
+			ts.name = node;
+			return ts;
+		 elseif(type(node) == "number") then
+			ts.type = INTEGER;
+			ts.name = node;
+			ts.size = 0;
+			return ts;
+		else 
+			die("node_typesize(): unknown node?");
+		end
+	end
+
+	function gen_subrange(t)
+		if(type(t.node) == "table" and t.node.t == "openpin") then
+			return "";
+		end
+
+		if(t.h ~= nil and t.l == nil) then
+			return t.name.."["..t.h.."]";
+		elseif(t.h ~= nil and t.l ~= nil) then
+			return t.name.."["..t.h..":"..t.l.."]";
+		else
+			return t.name;
+		end
+	end
+
+	function calc_size(t)
+		if(t.h ~= nil and t.l == nil) then
+			return 1;
+		elseif(t.h ~= nil and t.l ~= nil) then
+			return t.h-t.l+1; 
+		else
+			local sig= cgen_find_sigport(t.name);
+			return sig.range;
+		end
+	end
+
+
+	function cgen_verilog_assign(node)
+		local tsd = node_typesize(node.dst);
+		local tss = node_typesize(node.src);
+
+		tsd.sig.vlog_type = csel(inside_process, VLOG_REG, VLOG_WIRE);
+	
+		emiti();
+		if (tss.type == OTHERS or tss.type == UNDEFINED) then -- vhdl dst <= (others => x) expression
+			local bin = string.format("%d'b", tsd.size);
+			local val = csel(tss.type == UNDEFINED, "X", csel(tss.value == 1, "1", "0"));
+
+			for i=1,tsd.size do
+				bin=bin..val;
+			end
+
+			emitx(csel(not inside_process, "assign ", "")..gen_subrange(tsd)..csel(inside_process," <= ", " = "));
+			emitx(bin..";\n");
+
+		elseif (tss.type == EXPRESSION) then
+			emitx(csel(not inside_process, "assign ", "")..gen_subrange(tsd)..csel(inside_process," <= ", " = "));
+			recurse({tss.code});
+			emitx(";\n");
+		else
+			emitx(csel(not inside_process, "assign ", "")..gen_subrange(tsd)..csel(inside_process," <= ", " = ")..gen_subrange(tss)..";\n");
+		end
+	end
+
+	function cgen_verilog_if(node)
+		emiti(); emitx("if (");
+
+		recurse(node.cond);
+		emitx(") begin\n");
+		if(node.code_else ~= nil) then
+		indent_right();
+		recurse(node.code);
+		indent_left();
+		emit("end else begin");
+		indent_right();
+		recurse(node.code_else);
+		indent_left();
+		emit("end");
+		else
+		indent_right();
+		recurse(node.code);
+		indent_left();
+		emit("end");
+
+		end
+	
+	end
+
+	function cgen_verilog_not(node)
+		local tsa = node_typesize(node.a);
+
+		emitx("! ");
+
+		if(tsa.type == EXPRESSION) then
+			emitx("("); recurse({node.a}); emitx(")");
+		else
+			emitx(gen_subrange(tsa));
+		end
+	end
+
+
+	function cgen_verilog_binary_op(node)
+		local tsa = node_typesize(node.a);
+		local tsb = node_typesize(node.b);
+		local op = node.t;
+
+		if(tsa.type == EXPRESSION) then
+			emitx("("); recurse({node.a}); emitx(")");
+		else
+			emitx(gen_subrange(tsa));
+		end
+
+
+		if(op=="eq") then emitx(" == "); end
+		if(op=="and") then emitx(" && "); end
+		if(op=="or") then emitx(" || "); end
+		if(op=="sub") then emitx(" - "); end
+		if(op=="add") then emitx(" + "); end
+
+		if(tsb.type == EXPRESSION) then
+			emitx("("); recurse({node.b}); emitx(")");
+		else
+			emitx(gen_subrange(tsb));
+		end
+	end
+
+
+	function cgen_verilog_comment(node)
+		emitx("// "..node.str.."\n");
+	end
+
+
+	-- switch/case statement --
+	function cgen_verilog_switch(node)
+
+		local tsa = node_typesize(node.a);
+
+		emiti(); emitx("case ");
+
+		if(tsa.type == EXPRESSION) then
+			emitx("("); recurse({node.a}); emitx(")");
+		else
+			emitx("("..gen_subrange(tsa)..")");
+		end	
+
+		emit("");
+
+		for i,v in pairs(node.code)  do
+
+			if(v.t == "case") then			
+				emit(string.format("%d'h%x: begin", tsa.size, v.a));
+				indent_right();
+				recurse({v.code});
+				indent_left();
+				emit("end");
+			elseif(v.t == "casedefault") then			
+				emit("default: begin");
+				indent_right();
+				recurse({v.code});
+				indent_left();
+				emit("end");
+			end	
+
+
+		end
+
+		emit("endcase");
+
+	end
+
+
+	-- function instantiates and wires a VHDL component.
+	function cgen_verilog_instance(node)
+		local num_pmaps=0;
+		local num_gmaps=0;
+		local n;
+
+
+	-- emit the instatiation code
+		emitx(node.component.." ");
+
+	-- count the number of PORT MAPs and GENERIC MAPs
+		for i,v in pairs(node.maps) do
+			if(v.t=="genmap") then
+				num_gmaps=num_gmaps+1;
+			elseif(v.t == "portmap") then
+				num_pmaps=num_pmaps+1;
+			end 
+		end
+	
+	-- do we gave GENERIC MAPs?	
+		if(num_gmaps > 0) then
+			indent_right();
+			emit("# (");
+			indent_right();
+			n=1;
+
+	-- then emit all of them
+			for i,v in pairs(node.maps) do
+				if(v.t=="genmap") then
+					local from = v.from;
+					if(from == "true") then from = 1;
+					elseif(from == "false") then from = 0; end				
+					emit(string.format(".%-20s(%s)", v.to, from)..csel(n==num_gmaps,"",","));
+					n=n+1;
+				end
+			end	
+			indent_left();
+			emit(")");
+			indent_left();		
+		end	
+
+	-- do we have PORT MAPs?
+		if(num_pmaps > 0) then
+			indent_right();
+			emit(node.name.." ( ");
+			indent_right();
+			n=1;
+			for i,v in pairs(node.maps) do
+				if(v.t=="portmap") then
+				local tsd = node_typesize(v.from);
+				emit(string.format(".%-20s(%s)", v.to, gen_subrange(tsd))..csel(n==num_pmaps,"",","));
+				n=n+1;
+				end
+			end	
+			indent_left();
+			emit(");");
+			indent_left();		
+		end	
+
+		emit("");
+	end
+
+	-- generates VHDL "pin => open" mapping
+	function cgen_verilog_openpin(node)
+-- just leave it empty :)
+		emitx("");
+	end
+	
+	function cgen_verilog_combprocess(node)
+		local first_one = true;
+		emiti();
+		emitx("always @(");
+		inside_process = true;
+		for i,v in pairs(node.slist) do
+			if(first_one) then
+				first_one = false;
+			else
+				emitx(" or ");
+			end
+			emitx(v);
+		end
+		
+		emit(")");
+		emit("begin");
+
+		indent_right();
+		recurse(node.code);
+		indent_left();
+		inside_process = false;
+		emit("end");	
+		emit("");
+		emit("");
+
+	end
+
+
+
+
+	function recurse(node)
+		local generators = {
+			["comment"] 			= cgen_verilog_comment;
+			["syncprocess"] 	= cgen_verilog_syncprocess;
+			["combprocess"] 	= cgen_verilog_combprocess;
+			["assign"]			 	= cgen_verilog_assign;
+			["if"]			 			= cgen_verilog_if;
+			["eq"]					 	= cgen_verilog_binary_op;
+			["add"]					 	= cgen_verilog_binary_op;		
+			["sub"]					 	= cgen_verilog_binary_op;
+			["or"]					 	= cgen_verilog_binary_op;
+			["and"]					 	= cgen_verilog_binary_op;
+			["not"]						= cgen_verilog_not;
+			["switch"] 				= cgen_verilog_switch;
+			["instance"]			= cgen_verilog_instance;
+ 			["openpin"]				= cgen_verilog_openpin;
+		};
+
+
+		for i,v in pairs(node) do
+			-- no type? probably just a block of code. recurse it deeper.
+
+			if(v.t == nil) then
+				recurse(v);
+			else
+				local func = generators[v.t];
+				if(func == nil) then
+					die("Unimplemented generator: "..v.t);
+				end
+				func(v);
+			end
+		end
+	end
+
+	-- generate the header of the file
+	cgen_new_snippet();
+	cgen_verilog_header();
+	local c_header = cgen_get_snippet();
+
+	-- now recurse the syntax tree and generate the main code block. Also, classify all the signals as REGs or WIREs
+	cgen_new_snippet();
+	recurse(tree);
+	cgen_verilog_ending();
+	local c_body = cgen_get_snippet();
+
+	-- generate the module definions and signals - this must done after the module body has been generated in order to determine whether to declare things
+	-- as regs or wires.
+	cgen_new_snippet();
+	cgen_verilog_module();
+	local c_mod = cgen_get_snippet();
+
+	cgen_write_snippet(c_header);
+	cgen_write_snippet(c_mod);
+	cgen_write_snippet(c_body);
+
+end
+
+-- wbgen2, (c) 2010 Tomasz Wlostowski/CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
+
+-- File: cgen_c_headers.lua
+--
+-- The C header code generator.
+--
+
+-- generates #defines for a register field:
+-- NAME_MASK - bit mask of the field
+-- NAME_SHIFT - bit offset of the field
+-- NAME_W - write access macro packing given field value into the register:
+-- regs_struct->reg = FIELD1_W(value1) | FIELD2_W(value2) | ....;
+--
+-- NAME_R - read access macro extracting the value of certain field from the register: 
+-- field1_value = FIELD1_R(regs_struct->reg);
+--
+function cgen_c_field_define(field, reg)
+	local prefix;
+-- anonymous field?
+	if(field.c_prefix == nil) then
+			return ;
+	else
+		prefix=string.upper(periph.c_prefix).."_"..string.upper	(reg.c_prefix).."_"..string.upper(field.c_prefix);	
+	end
+
+
+	emit("");
+	emit("/* definitions for field: "..field.name.." in reg: "..reg.name.." */");
+
+-- for bit-type fields, emit only masks
+	if(field.type == BIT or field.type == MONOSTABLE)  then
+		emit(string.format("%-45s %s", "#define "..prefix, "WBGEN2_GEN_MASK("..field.offset..", 1)"));
+
+	else 
+-- SLV/signed/unsigned fields: emit masks, shifts and access macros
+		print(field.offset, field.size);
+
+		emit(string.format("%-45s %s", "#define "..prefix.."_MASK", "WBGEN2_GEN_MASK("..field.offset..", "..field.size..")"));
+		emit(string.format("%-45s %d", "#define "..prefix.."_SHIFT", field.offset));
+		emit(string.format("%-45s %s", "#define "..prefix.."_W(value)", "WBGEN2_GEN_WRITE(value, "..field.offset..", "..field.size..")"));
+
+-- if the field is signed, generate read operation with sign-extension
+		if(field.type == SIGNED) then
+			emit(string.format("%-45s %s", "#define "..prefix.."_R(reg)", "WBGEN2_SIGN_EXTEND(WBGEN2_GEN_READ(reg, "..field.offset..", "..field.size.."), "..field.size..")"));
+		else
+			emit(string.format("%-45s %s", "#define "..prefix.."_R(reg)", "WBGEN2_GEN_READ(reg, "..field.offset..", "..field.size..")"));
+		end
+	end	
+end
+
+
+-- generates some definitions for RAM memory block
+function cgen_c_ramdefs(ram)
+	local prefix = string.upper(periph.c_prefix).."_"..string.upper(ram.c_prefix);
+
+	emit("/* definitions for RAM: "..ram.name.." */");	
+
+	emit(string.format("#define "..prefix.."_BYTES 0x%08x %-50s", ram.size * ram.width / 8, "/* size in bytes */"));
+	emit(string.format("#define "..prefix.."_WORDS 0x%08x %-50s", ram.size, "/* size in "..ram.width.."-bit words, 32-bit aligned */"));
+end
+
+-- iterates all regs and rams and generates appropriate #define-s
+function cgen_c_field_masks()
+	foreach_reg({TYPE_REG}, function(reg)
+								if(reg.num_fields ~= nil and reg.num_fields > 0) then
+									emit("");
+									emit("/* definitions for register: "..reg.name.." */");
+									foreach_subfield(reg, function(field, reg) cgen_c_field_define(field, reg) end);
+								end
+							end);
+							
+	foreach_reg({TYPE_RAM}, function(ram)
+								cgen_c_ramdefs(ram);
+							end);
+end
+
+
+-- generates C file header
+function cgen_c_fileheader()
+  emit ("/*");
+  emit ("  Register definitions for slave core: "..periph.name);
+  emit ("");
+  emit ("  * File           : "..options.output_c_header_file);
+  emit ("  * Author         : auto-generated by wbgen2 from "..input_wb_file);
+  emit ("  * Created        : "..os.date());
+  emit ("  * Standard       : ANSI C");
+  emit ("");
+  emit ("    THIS FILE WAS GENERATED BY wbgen2 FROM SOURCE FILE "..input_wb_file);
+  emit ("    DO NOT HAND-EDIT UNLESS IT'S ABSOLUTELY NECESSARY!");
+  emit ("");
+  emit ("*/");
+	emit("");
+	emit("#ifndef __WBGEN2_REGDEFS_"..string.upper(string.gsub(input_wb_file,"%.","_")))
+	emit("#define __WBGEN2_REGDEFS_"..string.upper(string.gsub(input_wb_file,"%.","_")))
+	emit("");
+	emit("#include <inttypes.h>");
+	emit("");	
+	emit("#if defined( __GNUC__)");
+	emit("#define PACKED __attribute__ ((packed))");
+	emit("#else");
+	emit("#error \"Unsupported compiler?\"");
+	emit("#endif");
+	emit("");
+	emit("#ifndef __WBGEN2_MACROS_DEFINED__");
+	emit("#define __WBGEN2_MACROS_DEFINED__");
+	emit("#define WBGEN2_GEN_MASK(offset, size) (((1<<(size))-1) << (offset))");
+	emit("#define WBGEN2_GEN_WRITE(value, offset, size) (((value) & ((1<<(size))-1)) << (offset))");
+	emit("#define WBGEN2_GEN_READ(reg, offset, size) (((reg) >> (offset)) & ((1<<(size))-1))");
+	emit("#define WBGEN2_SIGN_EXTEND(value, bits) (((value) & (1<<bits) ? ~((1<<(bits))-1): 0 ) | (value))");
+	emit("#endif");
+	emit("");
+end
+
+-- generates C structure reflecting the memory map of the peripheral.
+function cgen_c_struct()
+	local cur_offset = 0;
+	local pad_id = 0;
+
+-- generates padding entry (if the offset of the register in memory is ahead of current offset in the structure)	
+	function pad_struct(base)
+		if(cur_offset < base) then
+			emit("/* padding to: "..base.." words */");
+			emit("uint32_t __padding_"..pad_id.."["..(base - cur_offset).."];");
+			pad_id=pad_id+1;
+			cur_offset = base;
+		end
+	end
+	
+-- emit the structure definition...
+	emit("");
+	emit("PACKED struct "..string.upper(periph.c_prefix).."_WB {");
+	indent_right();
+	
+	
+	-- emit struct entires for REGs
+	foreach_reg({TYPE_REG}, function(reg)
+--								print(reg.name, reg.prefix, reg.c_prefix, reg.hdl_prefix);
+								pad_struct(reg.base);
+								emit(string.format("/* [0x%x]: REG "..reg.name.." */", reg.base * DATA_BUS_WIDTH / 8));
+
+	-- this is just simple :)
+								emit("uint32_t "..string.upper(reg.c_prefix)..";");
+								cur_offset = cur_offset + 1;
+							end);
+
+	-- .. and for RAMs
+	foreach_reg({TYPE_RAM}, function(ram)
+
+	-- calculate base address of the RAM
+	
+								--	print("SelBits: ram "..ram.name.." sb "..ram.select_bits);
+									local base = ram.select_bits * 
+															 math.pow (2, address_bus_width - address_bus_select_bits);									
+												
+									pad_struct(base);									
+
+	-- output some comments
+									emiti();
+									emitx(string.format("/* [0x%x - 0x%x]: RAM "..ram.name..", "..ram.size.." "..ram.width.."-bit words, "..DATA_BUS_WIDTH.."-bit aligned, "..csel(ram.byte_select, "byte", "word").."-addressable", base * DATA_BUS_WIDTH / 8, (base + math.pow(2, ram.wrap_bits)*ram.size) * (DATA_BUS_WIDTH / 8) - 1));
+									
+									if(ram.wrap_bits > 0) then
+										emitx(", mirroring: "..math.pow(2, ram.wrap_bits).." times */\n");
+									else
+										emitx(" */\n");
+									end
+									
+	-- and the RAM, as an array
+									if(ram.byte_select) then
+										emit("uint8_t "..string.upper(ram.c_prefix).." ["..(ram.size * (DATA_BUS_WIDTH/8) * math.pow(2, ram.wrap_bits)) .."];");
+									else
+										emit("uint32_t "..string.upper(ram.c_prefix).." ["..(ram.size * math.pow(2, ram.wrap_bits)) .."];");									
+									end
+							end);
+	
+	indent_left();
+	emit("};");
+	emit("");	
+end
+
+
+-- main C code generator function. Takes the peripheral definition and generates C code.
+function cgen_generate_c_header_code()
+	cgen_new_snippet();
+
+	cgen_c_fileheader();
+	cgen_c_field_masks();
+	cgen_c_struct();
+
+	emit("#endif");
+	cgen_write_current_snippet();
+end
+
+-- wbgen2, (c) 2010 Tomasz Wlostowski/CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
+
+-- File: cgen_c_headers.lua
+--
+-- HTML documentation generator.
+--
+
+html_stylesheet = '\
+	<!--\
+  BODY  { background: white; color: black;\
+  			  font-family: Arial,Helvetica; font-size:12; }\
+	h1 { font-family: Trebuchet MS,Arial,Helvetica; font-size:30; color:#404040; }\
+	h2 { font-family: Trebuchet MS,Arial,Helvetica; font-size:22; color:#404040; }\
+	h3 { font-family: Trebuchet MS,Arial,Helvetica; font-size:16; color:#404040; }\
+	.td_arrow_left { padding:0px; background: #ffffff; text-align: right; font-size:12;}\
+	.td_arrow_right { padding:0px; background: #ffffff; text-align: left; font-size:12;}\
+	.td_code { font-family:Courier New,Courier; padding: 3px; }\
+	.td_desc { padding: 3px; }\
+	.td_sym_center { background: #e0e0f0; padding: 3px; }\
+	.td_port_name { font-family:Courier New,Courier; background: #e0e0f0; text-align: right; font-weight:bold;padding: 3px; width:200px; }\
+	.td_pblock_left { font-family:Courier New,Courier; background: #e0e0f0; padding: 0px; text-align: left; }\
+	.td_pblock_right { font-family:Courier New,Courier; background: #e0e0f0; padding: 0px; text-align: right; }\
+	.td_bit { background: #ffffff; color:#404040; font-size:10; width: 70px; font-family:Courier New,Courier; padding: 3px; text-align:center; }\
+	.td_field { background: #e0e0f0; padding: 3px; text-align:center; }\
+	.td_unused { background: #a0a0a0; padding: 3px; text-align:center;  }\
+	th { font-weight:bold; color:#ffffff; background: #202080; padding:3px; }\
+	.tr_even { background: #f0eff0; }\
+	.tr_odd { background: #e0e0f0; }\
+	-->';
+
+function htable_new(rows, cols)
+	local tbl = {};
+
+	tbl.rows = rows;
+	tbl.cols = cols;
+
+	tbl.data={};
+	
+	for i=1,rows do 
+		tbl.data[i]={}; 
+		for j=1,cols do 
+			tbl.data[i][j] = {};
+			tbl.data[i][j].text = "";
+		end
+	end
+
+	return tbl;	
+end
+
+function htable_tdstyle(r, c, style)
+	tbl.data[r][c].style = style;
+end
+
+function htable_trstyle(r, c, style)
+	tbl.data[r].style = style;
+end
+
+function htable_frame(tbl, r,c1,c2)
+	if(c2 == nil) then
+		tbl.data[r][c1].extra = 'style="border: solid 1px black;"';
+	else
+		tbl.data[r][c1].extra = 'style="border-left: solid 1px black; border-top: solid 1px black; border-bottom: solid 1px black;';
+		tbl.data[r][c2].extra = 'style="border-right: solid 1px black; border-top: solid 1px black; border-bottom: solid 1px black;';
+
+		if(c2 > c1 + 1) then
+			for i=c1+1,c2-1 do
+				tbl.data[r][i].extra = 'border-top: solid 1px black; border-bottom: solid 1px black;';
+			end
+		end
+	end
+end
+
+function htable_emit(tbl)
+	emit("<table cellpadding=0 cellspacing=0 border=0>");
+	for i = 1, tbl.rows do
+
+	
+		
+		if(tbl.data[i].is_header ~= nil) then
+			tag = "th";
+		else
+			tag = "td";
+		end
+	
+	if(tbl.data[i].style ~= nil) then emit('<tr class="'..tbl.data[i].style..'">'); else emit('<tr>'); end
+		for j=1,tbl.cols do
+			local extra = "";
+			
+			
+			if(tbl.data[i][j].extra ~= nil) then extra = tbl.data[i][j].extra; end 
+			if(tbl.data[i][j].colspan ~= nil) then extra = extra..' colspan='..tbl.data[i][j].colspan..' '; end 
+		
+			if(tbl.data[i][j].style ~= nil) then emit('<'..tag..' '..extra..' class="'..tbl.data[i][j].style..'">'); else emit('<'..tag..'>'); end
+			emit(tbl.data[i][j].text);
+			emit('</'..tag..'>');
+		end		
+		emit("</tr>");
+	end
+	emit("</table>");
+end
+
+function has_any_ports(reg)
+	local has = false;
+	if(reg.ports ~= nil) then return true; end
+	foreach_subfield(reg, function(field) if (field.ports ~= nil) then has = true; end end);
+	return has;
+end
+
+function htable_add_row(tbl, r)
+	if(r>tbl.rows) then
+		for i=tbl.rows+1,r do
+			tbl.data[i]={}; 
+			for j=1,tbl.cols do 
+				tbl.data[i][j] = {};
+				tbl.data[i][j].text = "";
+			end
+		end
+		tbl.rows=r;
+	end
+end
+
+
+function hlink(where, name)
+	return '<A href="'..where..'">'..name..'</a>';
+end	
+
+function hitem(name)
+	return '<li>'..name..'</li>';
+end	
+
+function hanchor(sname, text)
+	return '<a name="'..sname..'">'..text..'</a>';
+end	
+
+doc_toc = {};
+
+function hsection(id0, id1, name)
+	local sect = {};
+	local n_dots = 0;
+		
+	sect.id_mangled = "sect_"..id0.."_"..id1;
+	sect.key = id0 * 1000 + id1;
+
+	if(id1 ~= 0) then
+		sect.level = 2;
+		sect.id = id0.."."..id1..".";
+	else
+		sect.level = 1;
+		sect.id = id0..".";
+	end
+
+	sect.name = name;
+	table.insert(doc_toc, sect);
+	
+	return "<h3>"..hanchor(sect.id_mangled, sect.id.." "..name).."</h3>";
+end
+
+function cgen_doc_port(row, v, leftright)
+	local arrow;
+
+	if(v.range > 1) then arrow = "Arr;"; else arrow="arr;"; end
+
+	local portname = csel (v.range > 1,  string.format("%s[%d:0]", v.name, v.range-1), v.name);
+	
+	if(leftright) then
+		arrow=csel(v.dir=="in", "&r", csel(v.dir=="out", "&l", "&h"))..arrow; 
+ 		row[1].text = arrow;
+ 		row[2].text = portname;
+	else
+		 arrow=csel(v.dir=="in", "&l", csel(v.dir=="out", "&r", "&h"))..arrow; 
+ 		row[5].text = arrow;
+ 		row[4].text = portname;
+	end
+end
+
+function cgen_doc_hdl_symbol()
+	local ports = {};
+
+	emit(hsection(2, 0, "HDL symbol"));	
+		
+	for i,v in pairs(g_portlist) do
+		if(v.is_wb) then
+			table.insert(ports, v);
+		end
+	end
+
+	foreach_reg(ALL_REG_TYPES, function(reg)
+		if(has_any_ports(reg)) then
+			table.insert(ports, reg.name);
+
+			if(reg.ports ~= nil) then
+				for i,v in pairs(reg.ports) do
+					table.insert(ports, v);
+				end
+			end
+
+			foreach_subfield(reg, function(field, reg) 
+				for i,v in pairs(field.ports) do
+					table.insert(ports ,v);
+				end
+			end);
+		
+		end
+	end);
+	cgen_doc_symbol(ports);
+end
+
+
+function cgen_doc_mem_symbol(ram)
+	local ports = {};
+	
+ for i,v in pairs(ram.ports) do
+		local p = v;
+		if(string.find(v.name, "_i") ~= nil) then
+			p.is_wb = true;
+		else
+			p.is_wb = false;
+		end
+		table.insert(ports, p);
+	end
+	
+	if(ram.clock ~= nil) then
+		local p = port(BIT, 0, "in", ram.clock);
+		p.is_wb = true;
+		table.insert(ports, p);
+	end
+	
+	cgen_doc_symbol(ports);
+end
+
+function cgen_doc_symbol(ports)
+
+	local tbl = htable_new(3, 5);
+	local nrowl = 1;
+	local nrowr = 1;
+	local first_one = true;
+	
+	for i,v in pairs(ports) do
+		if(v.is_wb) then
+				htable_add_row(tbl, nrowl); 
+				cgen_doc_port(tbl.data[nrowl], v, true);
+				nrowl = nrowl+1;
+		end
+	end
+	
+	for i,v in ipairs(ports) do
+	 	if(type(v) == "string") then
+	 		if(first_one == false) then
+				htable_add_row(tbl, nrowr);
+				row = tbl.data[nrowr]; row[3].text="&nbsp;";
+				nrowr=nrowr+1;
+			else
+				first_one = false;		
+			end
+			htable_add_row(tbl, nrowr);
+			local row = tbl.data[nrowr];
+			row[4].style = "td_port_name";
+			row[4].text = "<b>"..v..":</b>";
+			nrowr=nrowr+1;
+		elseif(not v.is_wb) then
+			htable_add_row(tbl, nrowr);
+			local row = tbl.data[nrowr]; cgen_doc_port(row, v, false); nrowr = nrowr+1;
+		end
+	end
+		
+	
+	for i=1,tbl.rows do
+		local row = tbl.data[i];
+		row[1].style = "td_arrow_left";
+		row[2].style = "td_pblock_left";
+		if(row[3].style == nil) then row[3].style = "td_sym_center"; end
+		row[4].style = "td_pblock_right";
+		row[5].style = "td_arrow_right";
+	end
+
+
+	htable_emit(tbl);
+end
+
+
+
+function cgen_doc_header_and_toc()
+	emit('<HTML>');
+	emit('<HEAD>');
+	emit('<TITLE>'..periph.hdl_entity..'</TITLE>');
+	emit('<STYLE TYPE="text/css" MEDIA="all">');
+	emit(html_stylesheet);
+	emit('</STYLE>');
+	emit('</HEAD>');
+	emit('<BODY>');
+
+	emit('<h1 class="heading">'..periph.hdl_entity..'</h1>');
+	emit('<h3>'..periph.name..'</h3>');
+	local t = periph.description;
+	emit('<p>'..string.gsub(t, "\n", "<br>")..'</p>');
+	emit('<h3>Contents:</h3>');
+
+	table.sort(doc_toc, function(a,b) return a.key < b.key; end);
+	
+	for i,v in ipairs(doc_toc) do
+		emit('<span style="margin-left: '..((v.level-1) * 20)..'px; ">'..v.id.." "..hlink('#'..v.id_mangled, v.name)..'</span><br/>');
+	end
+													
+									
+	
+end
+
+
+function cgen_doc_memmap()
+	local evenodd=0;
+	local n = 2;
+	emit(hsection(1, 0, "Memory map summary"));
+
+	local tbl = htable_new(1,5);
+
+	local row = tbl.data[1];
+
+	row.is_header = true;
+	row[1].text = "H/W Address"
+	row[2].text = "Type";
+	row[3].text = "Name";
+	row[4].text = "VHDL/Verilog prefix";
+	row[5].text = "C prefix";
+
+	foreach_reg({TYPE_REG, TYPE_FIFO}, function(reg)
+		if(reg.full_hdl_prefix ~= nil) then
+			htable_add_row(tbl, n);
+			local row = tbl.data[n]; n=n+1;
+			
+			row.style = csel(evenodd, "tr_odd", "tr_even");
+		
+			row[1].style = "td_code";
+			row[1].text = string.format("0x%x", reg.base);
+			row[2].text = "REG";
+
+			row[3].text = hlink("#"..string.upper(reg.c_prefix), reg.name);
+			row[4].style = "td_code";
+			row[4].text = reg.full_hdl_prefix;
+
+			row[5].style = "td_code";
+			row[5].text = string.upper(reg.c_prefix);
+
+			evenodd = not evenodd;
+		end
+	end);
+	
+
+	foreach_reg({TYPE_RAM}, function(reg)
+		if(reg.full_hdl_prefix ~= nil) then
+			htable_add_row(tbl, n);
+			local row = tbl.data[n]; n=n+1;
+			
+			row.style = csel(evenodd, "tr_odd", "tr_even");
+		
+			row[1].style = "td_code";
+			row[1].text = string.format("0x%x - 0x%x",reg.base, reg.base+math.pow(2, reg.wrap_bits)*reg.size-1);
+			row[2].text = "MEM";
+
+			row[3].text = hlink("#"..string.upper(reg.c_prefix), reg.name);
+			row[4].style = "td_code";
+			row[4].text = reg.full_hdl_prefix;
+
+			row[5].style = "td_code";
+			row[5].text = string.upper(reg.c_prefix);
+
+			evenodd = not evenodd;
+		end
+	end);
+
+	htable_emit(tbl);		
+
+end
+
+function find_field_by_offset (reg, offset)
+	local found = nil;
+	foreach_subfield(reg, function(field) if(offset >= field.offset and offset <= (field.offset+field.size-1)) then found = field; end end);
+	return found;
+end
+
+function cgen_doc_fieldtable(reg, bitoffs)
+	local td_width = 70;	
+	local tbl;
+	local n= 1;
+	local cellidx = 1;
+	
+	tbl= htable_new(2,8);
+	
+	
+	for i=1,8 do
+		tbl.data[1][i].style = "td_bit";
+		tbl.data[1][i].text = string.format("%d", bitoffs+8-i);
+	end
+
+	local bit = bitoffs + 7;
+	while (bit >= bitoffs) do
+		local f = find_field_by_offset(reg, bit);
+		
+		if(f == nil) then
+			tbl.data[2][n].style = "td_unused";
+			tbl.data[2][n].text = "-";
+			n=n+1;
+			bit=bit-1;
+		else
+			local fend;
+			if(f.offset < bitoffs) then
+				fend = bitoffs;
+			else
+				fend = f.offset;	  
+			end
+			local ncells = (bit - fend) + 1;
+			
+			if(ncells > 1) then tbl.data[2][n].colspan = ncells; end
+		
+			local prefix;
+			
+			prefix = f.c_prefix;
+			if(prefix == nil)  then prefix = reg.c_prefix; end
+
+			tbl.data[2][n].style = "td_field";
+			tbl.data[2][n].text = csel(f.size>1, string.format("%s[%d:%d]", string.upper(prefix), bit-f.offset, fend-f.offset), string.upper(prefix));
+
+			htable_frame(tbl, 2, cellidx);
+			
+		
+			
+			bit = bit - ncells;
+			n=n+ncells;
+		end
+		
+				cellidx = cellidx + 1;
+
+	end
+
+	htable_emit(tbl);
+end
+
+function cgen_doc_access(acc)
+	if(acc == READ_ONLY) then
+		return "read-only";
+	elseif(acc == READ_WRITE) then
+		return "read/write";
+	elseif(acc == WRITE_ONLY) then
+		return "write-only";
+	else
+		return "FIXME!";
+	end
+end
+
+cur_reg_no = 1;
+
+function cgen_doc_reg(reg)
+
+	emit(hanchor(string.upper(reg.c_prefix),""));
+	emit(hsection(3, cur_reg_no, reg.name));
+
+	cur_reg_no = cur_reg_no + 1;
+
+	local tbl = htable_new(4, 2);
+	
+	tbl.data[1][1].text = "<b>HW prefix: </b>";
+	tbl.data[2][1].text = "<b>HW address: </b>";
+	tbl.data[3][1].text = "<b>C prefix: </b>";
+	tbl.data[4][1].text = "<b>C offset: </b>";
+
+	tbl.data[1][2].text = reg.full_hdl_prefix; 
+	tbl.data[2][2].text = string.format("0x%x", reg.base);
+	tbl.data[3][2].text = string.upper(reg.c_prefix);
+	tbl.data[4][2].text = string.format("0x%x", reg.base * (DATA_BUS_WIDTH/8));
+
+	for i=1,4 do tbl.data[i][2].style = "td_code"; end
+
+	htable_emit(tbl);
+	
+	
+	if(reg.description ~= nil) then
+		emit('<p>');
+		emit(string.gsub(reg.description, "\n", "<br>"));
+		emit('</p>');
+	end
+	
+	for i=0,DATA_BUS_WIDTH/8-1 do
+		cgen_doc_fieldtable(reg, (DATA_BUS_WIDTH/8-1-i)*8);
+	end
+
+	emit("<ul>");	
+	foreach_subfield(reg, function(field)
+		emit("<li><b>");
+		if(field.c_prefix == nil) then -- anonymous field?
+			emit(string.upper(reg.c_prefix));
+		else
+			emit(string.upper(field.c_prefix));
+		end
+	
+		emit("</b>[<i>"..cgen_doc_access(field.access_bus).."</i>]: "..field.name);
+		
+		if(field.description ~= nil) then
+			emit("<br>"..string.gsub(field.description, "\n", "<br>"));
+		end
+
+	end);
+	emit("</ul>");		
+end
+
+cur_mem_no = 1;
+
+function cgen_doc_ram(ram)
+	emit(hanchor(string.upper(ram.c_prefix),""));
+	emit(hsection(4, cur_mem_no, ram.name));
+	cur_mem_no = cur_mem_no + 1;
+	
+	local tbl = htable_new(11, 2);
+
+	tbl.data[1][1].text = "<b>HW prefix: </b>";
+	tbl.data[2][1].text = "<b>HW address: </b>";
+	tbl.data[3][1].text = "<b>C prefix: </b>";
+	tbl.data[4][1].text = "<b>C offset: </b>";
+
+	tbl.data[5][1].text = "<b>Size: </b>";
+	tbl.data[6][1].text = "<b>Data width: </b>";
+	tbl.data[7][1].text = "<b>Access (bus): </b>";
+	tbl.data[8][1].text = "<b>Access (device): </b>";
+	tbl.data[9][1].text = "<b>Mirrored: </b>";
+	tbl.data[10][1].text = "<b>Byte-addressable: </b>";
+	tbl.data[11][1].text = "<b>Peripheral port: </b>";
+
+--	for i=1,6 do tbl.data[i][2].style="td_code"; end
+	
+	tbl.data[1][2].text = string.lower(periph.hdl_prefix.."_"..ram.hdl_prefix); 
+	tbl.data[2][2].text = string.format("0x%x", ram.base);
+	tbl.data[3][2].text = string.upper(ram.c_prefix);
+	tbl.data[4][2].text = string.format("0x%x", ram.base * (DATA_BUS_WIDTH/8));
+
+	tbl.data[5][2].text = ram.size.." "..ram.width.."-bit words";
+	tbl.data[6][2].text = ram.width;
+	tbl.data[7][2].text = cgen_doc_access(ram.access_bus);
+	tbl.data[8][2].text = cgen_doc_access(ram.access_dev);
+	
+	if(ram.byte_select ~= nil and ram.byte_select == true) then
+		tbl.data[10][2].text = "yes";
+	else
+		tbl.data[10][2].text = "no";
+	end
+	
+	if(ram.wrap_bits ~= nil and 0 ~= ram.wrap_bits) then
+		tbl.data[9][2].text = math.pow(2, ram.wrap_bits).." times";
+	else
+		tbl.data[9][2].text = "no";
+	end	
+
+	if(ram.clock ~= nil) then
+		tbl.data[11][2].text = "asynchronous ("..ram.clock..")";
+	else
+		tbl.data[11][2].text = "bus-synchronous";
+	end	
+
+
+	htable_emit(tbl);
+
+	emit("<br>");
+	cgen_doc_mem_symbol(ram);
+	
+	if(ram.description ~= nil) then
+		emit("<p>"..string.gsub(ram.description,"\n", "<br>").."</p>");
+	end
+end
+
+cur_irq_no = 1;
+
+function cgen_doc_irq(irq)
+	emit(hanchor(string.upper(irq.c_prefix),""));
+	emit(hsection(5, cur_irq_no, irq.name));
+	cur_irq_no = cur_irq_no + 1;
+	
+	local tbl = htable_new(3, 2);
+
+	tbl.data[1][1].text = "<b>HW prefix: </b>";
+	tbl.data[2][1].text = "<b>C prefix: </b>";
+	tbl.data[3][1].text = "<b>Trigger: </b>";
+
+	tbl.data[1][2].text = string.lower(periph.hdl_prefix.."_"..irq.hdl_prefix); 
+	tbl.data[2][2].text = string.upper(irq.c_prefix);
+
+	local trigtab = {
+	[EDGE_RISING] = "rising edge";
+	[EDGE_FALLING] = "falling edge";
+	[LEVEL_0] = "low level";
+	[LEVEL_1] = "high level";
+	};
+	
+	
+	tbl.data[3][2].text = trigtab[irq.trigger];
+
+	htable_emit(tbl);
+	if(irq.description ~= nil) then
+		emit("<p>"..string.gsub(irq.description,"\n", "<br>").."</p>");
+	end
+end
+
+
+function cgen_generate_documentation()
+	cgen_new_snippet(); cgen_doc_hdl_symbol(); local h_sym = cgen_get_snippet();
+
+	cgen_new_snippet();
+	emit(hsection(3,0, "Register description"));
+	foreach_reg({TYPE_REG, TYPE_FIFO}, function(reg) if(reg.no_docu == nil or reg.no_docu == false)then cgen_doc_reg(reg);end end);
+	local h_regs = cgen_get_snippet();
+
+	
+	local h_rams = "";
+	if(periph.ramcount > 0) then
+		emit(hsection(4,0, "Memory blocks"));
+		cgen_new_snippet();
+		foreach_reg({TYPE_RAM}, function(reg) if(reg.no_docu == nil or reg.no_docu == false)then cgen_doc_ram(reg);end end);
+		h_rams = cgen_get_snippet();
+	end
+
+
+	local h_irqs = "";
+	if(periph.irqcount > 0) then
+		cgen_new_snippet();
+		emit(hsection(5,0, "Interrupts"));
+		foreach_reg({TYPE_IRQ}, function(reg) if(reg.no_docu == nil or reg.no_docu == false) then cgen_doc_irq(reg); end end);
+		h_irqs = cgen_get_snippet();
+	end
+
+
+	cgen_new_snippet();
+	cgen_doc_memmap(); 
+	local h_memmap = cgen_get_snippet();
+
+
+	cgen_new_snippet();
+	cgen_doc_header_and_toc();
+
+	emit(h_memmap);
+	emit(h_sym);
+	emit(h_regs);
+	emit(h_rams);
+	emit(h_irqs);
+	
+	emit('</BODY>');
+	emit('</HTML>');
+	cgen_write_current_snippet();
+end
+-- -*- Mode: LUA; tab-width: 2 -*-
+
+-- wbgen2 - a simple Wishbone slave generator
+-- (c) 2010 Tomasz Wlostowski
+-- CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
+
+function gen_hdl_field_prefix(field, reg)
+	local field_count;
+
+	if(reg.hdl_prefix == nil) then
+		die("no prefix specified for reg: "..reg.name);
+	end
+
+	field_count = 0;
+	foreach_subfield(reg, function(field, reg) field_count = field_count+1; end );
+
+	if(field.count == 0) then
+		die("empty reg: "..reg.name);
+	end
+		
+	if(field.hdl_prefix == nil) then
+		if(field_count >1 ) then die("multiple anonymous-prefix fields declared for reg: "..reg.name); end
+		return  string.lower(periph.hdl_prefix.."_"..reg.hdl_prefix);
+	end
+
+
+  
+	return  string.lower(periph.hdl_prefix.."_"..reg.hdl_prefix.."_"..field.hdl_prefix);
+
+end
+
+-- generates VHDL for monostable-type field (both same-clock and other-clock)
+function gen_hdl_code_monostable(field, reg)
+	local prefix = gen_hdl_field_prefix(field, reg); 
+
+--	field.prefix = prefix;
+
+-- monostable type field using WB bus clock
+  if(field.clock == nil) then
+-- WB-synchronous monostable port (bus write-only)
+		field.signals = 	{	signal(BIT, 0, prefix.."_dly0"),
+												signal(BIT, 0, prefix.."_int") };
+					
+		field.ports =		{	port(BIT, 0, "out", prefix.."_o", "Port for MONOSTABLE field: '"..field.name.."' in reg: '"..reg.name.."'" ) };
+		field.acklen = 3;
+
+		field.extra_code = vsyncprocess("bus_clock_int", "rst_n_i", {
+												 vreset (0, {
+													va(prefix.."_dly0", 0);
+													va(prefix.."_o", 0);
+												 });
+												 vposedge {
+													va(prefix.."_dly0", prefix.."_int");
+													va(prefix.."_o", vand(prefix.."_int", vnot(prefix.."_dly0")));
+												 };
+												});
+		
+  	field.reset_code_main =  	{ va(prefix.."_int", 0) };
+	  field.write_code = 				{ va(prefix.."_int", vi("wrdata_reg", field.offset)) };
+	  field.read_code = 				{  };
+	  field.ackgen_code = 			{ va(prefix.."_int", 0) };
+
+  else
+-- WB-asynchronous monostable port (bus write-only)	
+ 		field.signals = 					{	signal(BIT, 0, prefix.."_int"), 
+ 																signal(BIT, 0, prefix.."_int_delay"), 
+																signal(BIT, 0, prefix.."_sync0"), 
+																signal(BIT, 0, prefix.."_sync1"),
+																signal(BIT, 0, prefix.."_sync2") };
+					
+	  field.ports = 						{	port(BIT, 0, "out", prefix.."_o", "Port for asynchronous (clock: "..field.clock..") MONOSTABLE field: '"..field.name.."' in reg: '"..reg.name.."'") };
+
+	  field.acklen = 						5;
+	   
+	  field.extra_code =				{ vsyncprocess(field.clock, "rst_n_i", {
+	  														vreset (0, {
+	  														 va(prefix.."_o", 0);
+	  														 va(prefix.."_sync0", 0);
+	  														 va(prefix.."_sync1", 0);
+	  														 va(prefix.."_sync2", 0);
+	  														}); 
+
+																vposedge({
+																 va(prefix.."_sync0", prefix.."_int");
+																 va(prefix.."_sync1", prefix.."_sync0");
+																 va(prefix.."_sync2", prefix.."_sync1");
+																 va(prefix.."_o", vand(prefix.."_sync2", vnot(prefix.."_sync1")));
+ 																});
+ 																});  };
+																
+
+	  field.reset_code_main = 	{ va(prefix.."_int", 0);
+	 															va(prefix.."_int_delay", 0); };
+	 															
+
+	  field.write_code =				{ va(prefix.."_int", vi("wrdata_reg", field.offset));
+	  														va(prefix.."_int_delay", vi("wrdata_reg", field.offset)); };
+
+	  field.read_code =					{ };
+
+	  field.ackgen_code_pre =		{ va(prefix.."_int", prefix.."_int_delay");
+	  														va(prefix.."_int_delay", 0); };
+  end
+end
+
+
+-- generates code for BIT-type field
+function gen_hdl_code_bit(field, reg)
+	local prefix = gen_hdl_field_prefix(field, reg); 
+
+  field.prefix = prefix;
+
+-- BIT-type field using WB bus clock
+  if(field.clock == nil) then
+    if(field.access == ACC_RW_RO) then
+-- bus(read-write), dev(read-only) bitfield
+			field.ports =						{ port(BIT, 0, "out", prefix.."_o", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'" ) };
+			field.signals = 				{ signal(BIT, 0, prefix.."_int") };
+			field.acklen = 					1;
+			
+			field.write_code =			{ va(prefix.."_int",  vi("wrdata_reg", field.offset)) };
+			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
+	    field.reset_code_main =	{ va(prefix.."_int", 0) };
+			field.extra_code =			{ va(prefix.."_o", prefix.."_int") };
+
+	  elseif (field.access == ACC_RO_WO) then
+-- bus(read-only), dev(read-only) bitfield
+	   	field.ports =						{ port(BIT, 0, "in", prefix.."_i", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'") };
+			field.signals = 				{  };
+			field.acklen = 					1;
+			field.write_code =			{  };
+			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_i") };
+      field.reset_code_main =	{  };
+			field.extra_code =	{  };
+
+	  elseif (field.access == ACC_WO_RO) then
+-- bus(write-only), dev(read-only) bitfield - unsupported yet (use RW/RO type instead)
+			die("WO-RO type unsupported yet ("..field.name..")");
+
+	  elseif (field.access == ACC_RW_RW) then
+-- dual-write bitfield (both from the bus and the device)
+			if(field.load == LOAD_EXT) then
+
+-- external load type (e.g. the register itself is placed outside the WB slave, which only outputs new value and asserts the "load" signal for single clock cycle upon bus write.
+		    field.ports =						{	port(BIT, 0, "out", prefix.."_o", "Ports for BIT field: '"..field.name.."' in reg: '"..reg.name.."'"),
+							  									port(BIT, 0, "in", prefix.."_i"),	    
+																	port(BIT, 0, "out", prefix.."_load_o") };	    
+	
+		    field.acklen =			 		1;
+		    
+		    field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_i") };
+		    field.write_code = 			{ va(prefix.."_load_o", 1) };
+		    field.extra_code =			{ va(prefix.."_o", vi("wrdata_reg", field.offset)) };
+		    field.ackgen_code_pre = { va(prefix.."_load_o", 0) };
+		    field.ackgen_code  = 		{ va(prefix.."_load_o", 0) };
+		    field.reset_code_main = { va(prefix.."_load_o", 0) };
+	
+			else
+		    die("internal RW/RW register storage unsupported yet ("..field.name..")");
+			end
+    end
+	else
+-- asynchronous bit-type register
+
+    if(field.access == ACC_RW_RO) then
+-- bus(read-write), dev(read-only) bitfield, asynchronous
+			field.ports =						{ port(BIT, 0, "out", prefix.."_o", "Port for asynchronous (clock: "..field.clock..") BIT field: '"..field.name.."' in reg: '"..reg.name.."'") };
+			field.signals = 				{ signal(BIT, 0, prefix.."_int"),
+												  			signal(BIT, 0, prefix.."_sync0"),
+												  			signal(BIT, 0, prefix.."_sync1") };
+					
+			field.acklen = 					4;
+			field.write_code =			{ va(prefix.."_int", vi("wrdata_reg", field.offset)) };
+			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
+
+	    field.reset_code_main =	{ va(prefix.."_int", 0) };
+
+			field.extra_code =			{	vcomment("synchronizer chain for field : "..field.name.." (type RW/RO, bus_clock_int <-> "..field.clock..")");
+																vsyncprocess(field.clock, "rst_n_i", {
+																vreset(0, {
+ 								    							va(prefix.."_o", 0);
+ 							    								va(prefix.."_sync0", 0);
+																	va(prefix.."_sync1", 0);
+																});
+																vposedge({
+																	va(prefix.."_sync0", prefix.."_int");
+																	va(prefix.."_sync1", prefix.."_sync0");
+																	va(prefix.."_o", prefix.."_sync1");
+																});
+																});
+															 };
+
+		elseif (field.access == ACC_RO_WO) then
+-- bus(read-only), dev(write-only) bitfield, asynchronous
+
+		field.ports =							{ port(BIT, 0, "in", prefix.."_i", "Port for asynchronous (clock: "..field.clock..") BIT field: '"..field.name.."' in reg: '"..reg.name.."'") };
+		field.signals = 					{ signal(BIT, 0, prefix.."_sync0"),
+															  signal(BIT, 0, prefix.."_sync1") };
+					
+		field.acklen = 						1;
+		field.write_code =				{  };
+		field.read_code = 				{ va(vi("rddata_reg", field.offset), prefix.."_sync1") };
+
+    field.reset_code_main =		{ };
+
+		field.extra_code =				{	vcomment("synchronizer chain for field : "..field.name.." (type RO/WO, "..field.clock.." -> bus_clock_int)");
+																vsyncprocess(field.clock, "rst_n_i", {
+																vreset(0, {
+																va(prefix.."_sync0", 0); 
+																va(prefix.."_sync1", 0);
+																});
+																
+																vposedge({
+																va(prefix.."_sync0", prefix.."_i");
+																va(prefix.."_sync1", prefix.."_sync0");
+																});
+																});
+															};
+
+    elseif (field.access == ACC_RW_RW) then
+-- asynchronous dual-write bitfield. Tough shit :/
+
+		if(field.load ~= LOAD_EXT) then
+		    die("Only external load is supported for RW/RW bit fields");
+			end
+
+			local comment = "Ports for asynchronous (clock: "..field.clock..") RW/RW BIT field: '"..field.name.."' in reg: '"..reg.name.."'";
+
+   		field.ports =									{	port(BIT, 0, "out", prefix.."_o", comment),
+																			port(BIT, 0, "in", 	prefix.."_i"),
+																			port(BIT, 0, "out", prefix.."_load_o") };  
+
+
+			field.signals = 							{ signal(BIT, 0, prefix.."_int_read"),
+																			signal(BIT, 0, prefix.."_int_write"),
+																			signal(BIT, 0, prefix.."_lw"),
+																			signal(BIT, 0, prefix.."_lw_delay"),
+																			signal(BIT, 0, prefix.."_lw_read_in_progress"),
+																			signal(BIT, 0, prefix.."_lw_s0"),
+																			signal(BIT, 0, prefix.."_lw_s1"),
+																			signal(BIT, 0, prefix.."_lw_s2"),
+																			signal(BIT, 0, prefix.."_rwsel") };
+																			
+			field.acklen = 									6;
+		
+			field.write_code =						{ va(prefix.."_int_write", vi("wrdata_reg", field.offset));
+																			va(prefix.."_lw", 1);
+																			va(prefix.."_lw_delay", 1);
+																			va(prefix.."_lw_read_in_progress", 0);
+																			va(prefix.."_rwsel", 1); }; 
+
+			field.read_code =						{ 	va(prefix.."_lw", 1);
+																			va(prefix.."_lw_delay", 1);
+																			va(prefix.."_lw_read_in_progress", 1);
+																			va(prefix.."_rwsel", 0); }; 
+																			
+
+			field.reset_code_main =				{ va(prefix.."_lw", 0);
+																			va(prefix.."_lw_delay", 0);
+																			va(prefix.."_lw_read_in_progress", 0);
+																			va(prefix.."_rwsel", 0);
+																			va(prefix.."_int_write", 0);
+																		};
+							
+
+			field.ackgen_code_pre =				{ va(prefix.."_lw", prefix.."_lw_delay");
+																			va(prefix.."_lw_delay", 0);
+																			vif(vand(vequal(vi("ack_sreg", 1), 1), vequal(prefix.."_lw_read_in_progress", 1)), {
+																				va(vi("rddata_reg", field.offset), prefix.."_int_read");
+																				va(prefix.."_lw_read_in_progress", 0);
+																			});
+																		};
+
+
+			field.extra_code =						{ vcomment("asynchronous BIT register : "..field.name.." (type RW/WO, "..field.clock.." <-> bus_clock_int)");
+											    					  vsyncprocess(field.clock, "rst_n_i", {
+																				vreset(0, {
+															 					  va(prefix.."_lw_s0", 0); 
+																					va(prefix.."_lw_s1", 0); 
+																					va(prefix.."_lw_s2", 0); 
+																					va(prefix.."_int_read", 0); 
+																					va(prefix.."_load_o", 0); 
+																					va(prefix.."_o", 0);
+																				});
+																	      vposedge({
+																					va(prefix.."_lw_s0", prefix.."_lw");
+																					va(prefix.."_lw_s1", prefix.."_lw_s0");
+																					va(prefix.."_lw_s2", prefix.."_lw_s1");
+																					vif(vand(vequal(prefix.."_lw_s2", 0), vequal(prefix.."_lw_s1", 1)), {
+																						vif(vequal(prefix.."_rwsel", 1), {
+																							va(prefix.."_o", prefix.."_int_write");
+																							va(prefix.."_load_o", 1);
+																						}, {
+																							va(prefix.."_load_o", 0);
+																							va(prefix.."_int_read", prefix.."_i");
+																						});
+																					}, {
+																						va(prefix.."_load_o", 0);
+																					});
+																					});
+																					});
+																				};
+
+		elseif (field.access == ACC_WO_RO) then
+			die("WO-RO type unsupported yet ("..field.name..")");
+    end
+	end
+end
+
+-- generates the bit-range for accessing a certain register field from WB-bus
+function vir(name, field)
+	local syn = {};
+	syn.t="index";
+	syn.name=name;
+	syn.h=field.offset+field.size-1;
+	syn.l=field.offset;
+	return syn;
+end
+
+-- generates code for slv, signed or unsigned fields
+function gen_hdl_code_slv(field, reg)
+	local prefix = gen_hdl_field_prefix(field, reg); 
+
+
+  field.prefix = prefix;
+
+-- synchronous signed/unsigned/slv field
+  if(field.clock == nil) then
+  
+	  if(field.access == ACC_RW_RO) then
+-- bus(read-write), dev(read-only) slv
+			field.ports =						{ port(field.type, field.size, "out", prefix.."_o", "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'") };
+			field.signals = 				{ signal(SLV, field.size, prefix.."_int") };
+			field.acklen = 					1;
+			field.write_code =			{ va(prefix.."_int", vir("wrdata_reg", field)); };
+			field.read_code = 			{ va(vir("rddata_reg", field), prefix.."_int"); };
+	    field.reset_code_main =	{ va(prefix.."_int",  0); };
+			field.extra_code =			{ va(prefix.."_o", prefix.."_int"); };
+		
+    elseif (field.access == ACC_RO_WO) then
+-- bus(read-only), dev(write-only) slv
+			field.ports =						{ port(field.type, field.size, "in", prefix.."_i",  "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'") };
+			field.signals = 				{  };
+			field.acklen = 					1;
+			field.write_code =			{  };
+			field.read_code = 			{ va(vir("rddata_reg", field), prefix.."_i"); };
+   		field.reset_code_main =	{  };
+			field.extra_code =			{  };
+
+	  elseif (field.access == ACC_RW_RW) then
+-- bus(read-write), dev(read-write) slv
+   		if(field.load ~= LOAD_EXT) then
+		    die("Only external load is supported for RW/RW slv/signed/unsigned fields");
+			end
+
+		    field.ports =						{	port(field.type, field.size, "out", prefix.."_o",  "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'"),
+										    					port(field.type, field.size, "in", prefix.."_i"),	    
+																	port(BIT, 0, "out", prefix.."_load_o") };	    
+	
+		    field.acklen = 					1;
+		    
+		    field.read_code = 			{ va(vir("rddata_reg", field), prefix.."_i"); };
+		    field.write_code = 			{ va(prefix.."_load_o", 0); };
+		    field.extra_code =			{ va(prefix.."_o", vir("wrdata_reg", field)); };
+		    field.ackgen_code_pre = { va(prefix.."_load_o", 0);};
+		    field.ackgen_code = 		{ va(prefix.."_load_o", 0); };
+		    field.reset_code_main = { va(prefix.."_load_o", 0); };
+		end
+	else
+-- asynchronous register. Even tougher shit :(
+
+		if(field.access == ACC_RW_RO) then
+-- bus(read-write), dev(read-only) slv/signed/unsigned
+			local comment = "Port for asynchronous (clock: "..field.clock..") "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'";
+
+			field.ports =									{ port(field.type, field.size, "out", prefix.."_o", comment) };
+
+			field.signals = 							{ signal(SLV, field.size, prefix.."_int"),
+																			signal(BIT, 0, prefix.."_swb"),
+																			signal(BIT, 0, prefix.."_swb_delay"),
+																			signal(BIT, 0, prefix.."_swb_s0"),
+																			signal(BIT, 0, prefix.."_swb_s1"),
+																			signal(BIT, 0, prefix.."_swb_s2") };
+							
+			field.acklen = 								4;
+		
+			field.write_code =						{ va(prefix.."_int", vir("wrdata_reg", field));
+																			va(prefix.."_swb", 1);
+																			va(prefix.."_swb_delay", 1); };
+							
+			field.read_code = 						{ va(vir("rddata_reg", field), prefix.."_int"); };
+		
+			field.reset_code_main =				{ va(prefix.."_int", 0); 
+																			va(prefix.."_swb", 0);
+																			va(prefix.."_swb_delay", 0); };
+										
+			field.ackgen_code_pre =				{ va(prefix.."_swb", prefix.."_swb_delay");
+																			va(prefix.."_swb_delay", 0); };
+			
+
+			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RW/RO, "..field.clock.." <-> bus_clock_int)");
+																			vsyncprocess(field.clock, "rst_n_i", {
+																				vreset(0, {
+																					va(prefix.."_swb_s0", 0);
+																					va(prefix.."_swb_s1", 0); 
+																					va(prefix.."_swb_s2", 0); 
+																					va(prefix.."_o", 0);
+																				});
+																				vposedge({
+																					va(prefix.."_swb_s0", prefix.."_swb");
+																					va(prefix.."_swb_s1", prefix.."_swb_s0");
+																					va(prefix.."_swb_s2", prefix.."_swb_s1");
+																					vif(vand(vequal(prefix.."_swb_s2", 0), vequal(prefix.."_swb_s1", 1)), {
+																						va(prefix.."_o", prefix.."_int");
+																					});
+																				});
+																			});
+																			};
+																		
+		elseif(field.access == ACC_RO_WO) then
+-- bus(read-write), dev(read-only) slv
+			local comment = "Port for asynchronous (clock: "..field.clock..") "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'";
+	
+			field.ports =									{ port(field.type, field.size, "in", prefix.."_i", comment) };
+
+			field.signals = 							{ signal(SLV, field.size, prefix.."_int"),
+																			signal(BIT, 0, prefix.."_lwb"),
+																			signal(BIT, 0, prefix.."_lwb_delay"),
+																			signal(BIT, 0, prefix.."_lwb_in_progress"),
+																			signal(BIT, 0, prefix.."_lwb_s0"),
+																			signal(BIT, 0, prefix.."_lwb_s1"),
+																			signal(BIT, 0, prefix.."_lwb_s2") };
+					  
+			field.acklen = 								6;
+			field.write_code =						{  }; 
+
+			field.read_code = 						{ va(prefix.."_lwb", 1);
+																			va(prefix.."_lwb_delay", 1);
+																			va(prefix.."_lwb_in_progress", 1); };
+
+			field.reset_code_main =				{ va(prefix.."_lwb", 0);
+																			va(prefix.."_lwb_delay", 0);
+																			va(prefix.."_lwb_in_progress", 0); };
+
+
+			field.ackgen_code_pre =				{ va(prefix.."_lwb", prefix.."_lwb_delay");
+																			va(prefix.."_lwb_delay", 0);
+																			vif(vand(vequal(vi("ack_sreg", 1), 1), vequal(prefix.."_lwb_in_progress", 1)), {
+																				va(vir("rddata_reg", field), prefix.."_int");
+																				va(prefix.."_lwb_in_progress", 0);
+																			});
+																		};
+
+			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RO/WO, "..field.clock.." <-> bus_clock_int)"),
+																			vsyncprocess(field.clock, "rst_n_i", {
+																			vreset(0, { 
+																				va(prefix.."_lwb_s0", 0);
+																				va(prefix.."_lwb_s1", 0);
+																				va(prefix.."_lwb_s2", 0); 
+																				va(prefix.."_int", 0);
+																			});
+																			vposedge({
+																				va(prefix.."_lwb_s0", prefix.."_lwb");
+																				va(prefix.."_lwb_s1", prefix.."_lwb_s0");
+																				va(prefix.."_lwb_s2", prefix.."_lwb_s1");
+																				vif(vand(vequal(prefix.."_lwb_s1", 1), vequal(prefix.."_lwb_s2", 0)), {
+																					va(prefix.."_int", prefix.."_i");
+																				});
+																			});
+																		});																			
+																		};
+	
+		elseif(field.access == ACC_RW_RW) then
+-- async bus(read-write), dev(read-write) slv. gooosh...
+
+   		if(field.load ~= LOAD_EXT) then
+		    die("Only external load is supported for RW/RW slv/signed/unsigned fields");
+			end
+
+			local comment = "Ports for asynchronous (clock: "..field.clock..") "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'";
+
+   		field.ports =									{	port(field.type, field.size, "out", prefix.."_o", comment),
+																			port(field.type, field.size, "in", prefix.."_i"),
+																			port(BIT, 0, "out", prefix.."_load_o") };  
+
+
+			field.signals = 							{ signal(SLV, field.size, prefix.."_int_read"),
+																			signal(SLV, field.size, prefix.."_int_write"),
+																			signal(BIT, 0, prefix.."_lw"),
+																			signal(BIT, 0, prefix.."_lw_delay"),
+																			signal(BIT, 0, prefix.."_lw_read_in_progress"),
+																			signal(BIT, 0, prefix.."_lw_s0"),
+																			signal(BIT, 0, prefix.."_lw_s1"),
+																			signal(BIT, 0, prefix.."_lw_s2"),
+																			signal(BIT, 0, prefix.."_rwsel") };
+																			
+							
+			field.acklen = 									6;
+		
+			field.write_code =						{ va(prefix.."_int_write", vir("wrdata_reg", field));
+																			va(prefix.."_lw", 1);
+																			va(prefix.."_lw_delay", 1);
+																			va(prefix.."_lw_read_in_progress", 0);
+																			va(prefix.."_rwsel", 1); }; 
+
+			field.read_code =						{ 	va(prefix.."_lw", 1);
+																			va(prefix.."_lw_delay", 1);
+																			va(prefix.."_lw_read_in_progress", 1);
+																			va(prefix.."_rwsel", 0); }; 
+																			
+
+			field.reset_code_main =				{ va(prefix.."_lw", 0);
+																			va(prefix.."_lw_delay", 0);
+																			va(prefix.."_lw_read_in_progress", 0);
+																			va(prefix.."_rwsel", 0);
+																			va(prefix.."_int_write", 0);
+																		};
+							
+
+			field.ackgen_code_pre =				{ va(prefix.."_lw", prefix.."_lw_delay");
+																			va(prefix.."_lw_delay", 0);
+																			vif (vand(vequal(vi("ack_sreg", 1), 1), vequal(prefix.."_lw_read_in_progress", 1)), {
+																				va(vir("rddata_reg", field), prefix.."_int_read");
+																			});
+																			va(prefix.."_lw_read_in_progress", 0);
+																			};
+
+			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RW/WO, "..field.clock.." <-> bus_clock_int)");
+											    					  vsyncprocess(field.clock, "rst_n_i", {
+													 					  vreset(0, {
+																				va(prefix.."_lw_s0", 0);
+																				va(prefix.."_lw_s1", 0);
+																				va(prefix.."_lw_s2", 0);
+																				va(prefix.."_o", 0); 
+																				va(prefix.."_load_o", 0); 
+	 																			va(prefix.."_int_read", 0);
+																			});
+																			vposedge({	
+																				va(prefix.."_lw_s0", prefix.."_lw");
+																				va(prefix.."_lw_s1", prefix.."_lw_s0");
+																				va(prefix.."_lw_s2", prefix.."_lw_s1");
+																				vif(vand(vequal(prefix.."_lw_s2", 0), vequal(prefix.."_lw_s1", 1)), {
+																					vif(vequal(prefix.."_rwsel", 1), {
+																						va(prefix.."_o", prefix.."_int_write");
+																						va(prefix.."_load_o", 1);
+																					}, {
+																						va(prefix.."_load_o", 0);
+																						va(prefix.."_int_read", prefix.."_i");
+																					});
+																				}, {
+																					va(prefix.."_load_o", 0);
+																				});
+																			});
+																			});
+																			};
+		end 
+	end
+end
+
+function gen_hdl_code_passthrough(field, reg)
+	local prefix = gen_hdl_field_prefix(field, reg); 
+
+	if(field.clock == nil) then
+-- sync pass-through
+
+			local comment = "Ports for PASS_THROUGH field: '"..field.name.."' in reg: '"..reg.name.."'";
+
+   		field.ports =									{	port(SLV, field.size, "out", prefix.."_o", comment),
+   																		port(BIT, 0, "out", prefix.."_wr_o") };
+
+			field.acklen = 1;
+			
+			field.reset_code_main	= 			{ va(prefix.."_wr_o", 0); };
+			field.read_code = 						{};
+			field.write_code = 						{ va(prefix.."_wr_o", 1); };
+			field.ackgen_code_pre =				{ va(prefix.."_wr_o", 0); };
+			field.ackgen_code	 =					{ va(prefix.."_wr_o", 0); };
+			field.extra_code =						{ vcomment("pass-through field: "..field.name.." in register: "..reg.name);
+																			va(prefix.."_o", vir("wrdata_reg", field)); }
+	else
+
+			local comment = "Ports for asynchronous (clock: "..field.clock..") PASS_THROUGH field: '"..field.name.."' in reg: '"..reg.name.."'";
+
+   		field.ports =									{	port(SLV, field.size, "out", prefix.."_o", comment),
+   																		port(BIT, 0, "out", prefix.."_wr_o") };
+
+			field.signals =								{ signal(BIT, 0, prefix.."_wr_int"), 
+																			signal(BIT, 0, prefix.."_wr_int_delay"), 
+																			signal(BIT, 0, prefix.."_wr_sync0"), 
+																			signal(BIT, 0, prefix.."_wr_sync1"),
+																			signal(BIT, 0, prefix.."_wr_sync2") };
+
+			field.acklen = 4;
+			
+			field.reset_code_main	= 			{ va(prefix.."_wr_int", 0);
+																			va(prefix.."_wr_int_delay", 0); };
+			field.read_code = 						{};
+
+			field.write_code = 						{ va(prefix.."_wr_int", 1); 
+																			va(prefix.."_wr_int_delay", 1);  };
+			field.ackgen_code_pre =				{ va(prefix.."_wr_int", prefix.."_wr_int_delay");
+																			va(prefix.."_wr_int_delay", 0); };
+
+			field.extra_code =						{ vcomment("pass-through field: "..field.name.." in register: "..reg.name);
+																			va(prefix.."_o", vir("wrdata_reg", field));
+																			vsyncprocess(field.clock, "rst_n_i", {
+																				vreset(0, {
+																					va(prefix.."_wr_sync0", 0);
+																					va(prefix.."_wr_sync1", 0);
+																					va(prefix.."_wr_sync2", 0);
+																				});
+																				vposedge({
+																					va(prefix.."_wr_sync0", prefix.."_wr_int");
+																					va(prefix.."_wr_sync1", prefix.."_wr_sync0");
+																					va(prefix.."_wr_sync2", prefix.."_wr_sync1");
+																					va(prefix.."_wr_o", vand(prefix.."_wr_sync1", vnot(prefix.."_wr_sync2")));
+																				});
+																			});
+																			}
+			end
+
+end
+
+-- generates code which loads data unused bits of data output register with Xs 
+function fill_unused_bits(target, reg)
+	local t={};
+	local code={};
+
+	foreach_subfield(reg, function(field, reg)
+													if(field.type == SLV or field.type == SIGNED or field.type == UNSIGNED) then
+														for i=field.offset, (field.offset+field.size-1) do t[i] = 1; end
+													elseif(field.type == BIT or field.type == MONOSTABLE)  then
+														t[field.offset] = 1;
+													end
+												end);
+
+	for i = 0, DATA_BUS_WIDTH-1 do
+		if(t[i] == nil) then
+			table_join(code, { va(vi(target, i), vundefined()); });
+		end
+	end
+	
+	return code;
+end
+
+
+-- generates VHDL code for single register field
+function gen_hdl_code_reg_field(field, reg)
+  
+	if(field.type == MONOSTABLE) then
+    gen_hdl_code_monostable(field, reg);
+	elseif(field.type == BIT) then 
+    gen_hdl_code_bit(field, reg);
+	elseif(field.type == SIGNED or field.type == UNSIGNED or field.type == SLV) then	    
+    gen_hdl_code_slv(field, reg);
+	elseif(field.type == PASS_THROUGH) then
+		gen_hdl_code_passthrough(field, reg);
+	end
+end
+
+-- generates VHDL for single register
+function gen_abstract_code(reg)
+
+ 	reg.full_hdl_prefix = string.lower(periph.hdl_prefix.."_"..reg.hdl_prefix);
+
+	if(reg.no_std_regbank == true) then
+		return;
+	end
+
+
+	if(reg.__type == TYPE_RAM) then
+		gen_code_ram(reg);
+  else
+  	foreach_subfield(reg, function(field, reg) gen_hdl_code_reg_field(field, reg); end );
+  end
+end
+
+function gen_hdl_block_select_bits()
+  return vi("rwaddr_reg", address_bus_width-1, (address_bus_width - address_bus_select_bits));
+end
+
+
+
+function ram_wire_core_ports(ram)
+	local prefix = ram.full_prefix;
+
+
+
+  if(match(ram.access_dev, {READ_ONLY, READ_WRITE})) then -- RAM is readable from the core - wire the data output and read strobe signals
+		
+		table_join(ram.ports, 	{	port(SLV, ram.width, "out", prefix.."_data_o", "Read data output"),
+															port(BIT, 0, "in", prefix.."_rd_i", "Read strobe input (active high)") });
+
+		table_join(ram.maps,		{ vpm ("data_b_o", prefix.."_data_o");
+															vpm ("rd_b_i", prefix.."_rd_i"); } );
+  else -- ram is not readable - the read strobe low and leave the data output open
+		table_join(ram.maps,		{ vpm ("data_b_o", vopenpin());
+															vpm ("rd_b_i", vi("allzeros", 0)) });
+  end
+
+  if(match(ram.access_dev, {WRITE_ONLY, READ_WRITE})) then
+
+		table_join(ram.ports,	 	{ port(SLV, ram.width, "in", prefix.."_data_i", "Write data input"), 
+															port(BIT, 0, "in", prefix.."_wr_i", "Write strobe (active high)") });
+
+		table_join(ram.maps, 		{ vpm ("data_b_i", prefix.."_data_i");
+															vpm ("wr_b_i", prefix.."_wr_i"); });
+
+		if(ram.byte_select == true and ram.width >= 16) then
+			table_join(ram.ports, { port (SLV, ram.width/8, "in", prefix.."_bwsel_i", "Byte select input (active high)") } );
+			table_join(ram.maps, 			{ vpm ("bwsel_b_i", prefix.."_bwsel_i"); } );
+		else
+			table_join(ram.maps,			{ vpm ("bwsel_b_i", vi("allones", math.floor(ram.width/8)-1, 0)); } );
+		end
+  else
+  	table_join(ram.maps,		{ vpm ("bwsel_b_i", vi("allones", math.floor(ram.width/8)-1, 0)); 
+  														vpm ("data_b_i", vi("allzeros", ram.width-1 ,0));
+  														vpm ("wr_b_i", vi("allzeros", 0)) });
+  end
+end
+
+function ram_wire_bus_ports(ram)
+	local prefix = ram.full_prefix;
+	
+-- RAM is readable from the bus?
+  if(match(ram.access_bus, {READ_ONLY, READ_WRITE})) then -- yes: wire rd strobe and data output
+		
+		table_join(ram.signals, { signal(SLV, ram.width,  prefix.."_rddata_int"),
+															signal(BIT, 0, prefix.."_rd_int") } );
+
+
+		table_join(ram.maps,		{ vpm ("data_a_o", vi(prefix.."_rddata_int", ram.width-1, 0));
+															vpm ("rd_a_i", prefix.."_rd_int"); } );
+																		
+  else -- not readable? - set read strobe to zero and leave the data output open
+   	table_join(ram.maps,		{	vpm ("rd_a_i", vi("allzeros", 0)),
+ 															vpm ("data_a_o", vopenpin()) });
+  end
+
+-- RAM is writable from the bus?
+  if(match(ram.access_bus, {WRITE_ONLY, READ_WRITE})) then
+		table_join(ram.signals, { signal(BIT, 0, prefix.."_wr_int") } );
+
+		table_join(ram.maps,	{ vpm ("data_a_i", vi("wrdata_reg", ram.width-1, 0));
+														vpm ("wr_a_i", prefix.."_wr_int"); });
+
+
+		if(ram.byte_select == true and ram.width >= 16) then
+			table_join(ram.maps, { vpm ("bwsel_a_i", vi("bwsel_reg", math.floor(ram.width/8)-1, 0)); } );
+		else
+			table_join(ram.maps,	{ vpm ("bwsel_a_i", vi("allones", math.floor(ram.width/8)-1, 0)); } );
+		end
+		
+  else
+  	table_join(ram.maps, 	{ vpm ("bwsel_a_i", vi("allones", math.floor(ram.width/8)-1, 0)); 
+  													vpm ("data_a_i", vi("allzeros", ram.width-1 ,0));
+  													vpm ("wr_a_i", vi("allzeros", 0)) });
+  end
+end
+
+function gen_code_ram(ram)
+  local prefix = string.lower(periph.hdl_prefix.."_"..ram.hdl_prefix);
+	
+-- generate the RAM-related ports
+	ram.full_prefix = prefix;
+	ram.signals = {};
+	ram.maps = {};
+	
+  ram.ports = { port (SLV, ram.addr_bits - ram.wrap_bits, "in", prefix.."_addr_i", "Ports for RAM: "..ram.name ) };
+	ram.reset_code_main = {};
+
+-- wire the obligartory signals - address busses and clocks
+	table_join(ram.maps,	{ vpm ("clk_a_i", "bus_clock_int");
+													vpm ("clk_b_i", csel(ram.clock ~= nil, ram.clock, "bus_clock_int"));
+													vpm ("addr_b_i", prefix.."_addr_i");
+													vpm ("addr_a_i", vi("rwaddr_reg", log2up(ram.size)-1, 0));
+											  });
+
+
+-- evaluate the access flags (from the core) and wire the core signals to appropriate ports
+	ram_wire_core_ports(ram);
+-- do the same for the bus signals
+	ram_wire_bus_ports(ram);
+
+-- fill in all the generic mappings
+	table_join(ram.maps,			{ vgm ("g_data_width", ram.width);
+															vgm ("g_size", ram.size);
+															vgm ("g_addr_width", log2up(ram.size));
+															vgm ("g_dual_clock", csel(ram.clock ~= nil, "true", "false"));
+															vgm ("g_use_bwsel", csel(ram.byte_select == true, "true", "false"));
+															});
+
+-- instantiate the RAM.
+	ram.extra_code = { 			vcomment ("RAM block instantiation for memory: "..ram.name);
+													vinstance (prefix.."_raminst", "wbgen2_dpssram", ram.maps );
+									 };
+
+	ram.base = ram.select_bits * math.pow (2, address_bus_width - address_bus_select_bits);				
+
+end
+-- -*- Mode: LUA; tab-width: 2 -*-
+
+-- wbgen2 - a simple Wishbone slave generator
+-- (c) 2010 Tomasz Wlostowski
+-- CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
+
+-- EIC (tm)(R) = Embedded Interrupt Controller. We need to register a trademark and start to sue people :)
+--
+-- EIC_IER = interrupt enable reg [passthru]
+-- EIC_IDR = interrupt disable reg [passthru]
+-- EIC_IMR = interrupt mask reg [rw, load-ext]
+-- EIC_ISR = interrupt status reg [rw, reset on write 1]
+--
+
+--function gen_eic_regfield_ier_idr(irq)
+--local 	= {	["name"] = irq.name;
+--						["description"] = "Disable interrupt "..irq.name;
+--						["prefix"] = irq.prefix;
+--						["type"] = TYPE_BIT;
+--					};
+--end
+
+function wbgen_generate_eic()
+
+	if(periph.irqcount == 0) then return; end
+
+	local irq_index = 0;
+	local irq_triggers = {};
+
+	local reg_idr = { ["__type"] = TYPE_REG; 
+										["__blockindex"] = 1000000;								
+										["align"] = 8;
+										["name"] = "Interrupt disable register";
+										["description"] = "Writing 1 disables handling of the interrupt associated with corresponding bit. Writin 0 has no effect.";
+										["c_prefix"] = "EIC_IDR";
+										["hdl_prefix"] = "EIC_IDR";
+
+										["signals"] = { signal (SLV, periph.irqcount, "eic_idr_int");
+																		signal (BIT, 0, "eic_idr_write_int"); };
+																		
+										["write_code"] = { va("eic_idr_write_int", 1); };
+										["ackgen_code"] = { va("eic_idr_write_int", 0); };
+										["reset_code_main"] = { va("eic_idr_write_int", 0); };
+										["acklen"] = 1;
+										["extra_code"] = { va("eic_idr_int", vi("wrdata_reg", periph.irqcount-1, 0)); };
+										["no_std_regbank"] = true;
+
+									};
+
+	local reg_ier = { ["__type"] = TYPE_REG; 
+										["__blockindex"] = 1000001;
+										["align"] = 1;
+										["name"] = "Interrupt enable register";
+										["description"] = "Writing 1 enables handling of the interrupt associated with corresponding bit. Writin 0 has no effect.";
+										["c_prefix"] = "EIC_IER";
+										["hdl_prefix"] = "EIC_IER";
+										["signals"] = { signal (SLV, periph.irqcount, "eic_ier_int");
+																		signal (BIT, 0, "eic_ier_write_int"); };
+																		
+										["write_code"] = { va("eic_ier_write_int", 1); };
+										["ackgen_code"] = { va("eic_ier_write_int", 0); };
+										["reset_code_main"] = { va("eic_ier_write_int", 0); };
+										["acklen"] = 1;
+										["extra_code"] = { va("eic_ier_int", vi("wrdata_reg", periph.irqcount-1, 0)); };
+										["no_std_regbank"] = true;
+									};
+
+	local reg_isr = { ["__type"] = TYPE_REG; 
+										["__blockindex"] = 1000002;
+										["align"] = 1;
+										["name"] = "Interrupt status register";
+										["description"] = "Each bit represents the state of corresponding interrupt. 1 means the interrupt is pending. Writing 1 to a bit clears the corresponding interrupt. Writing 0 has no effect.";
+										["c_prefix"] = "EIC_ISR";
+										["hdl_prefix"] = "EIC_ISR";
+										["signals"] = { signal (SLV, periph.irqcount, "eic_isr_clear_int");
+																		signal (SLV, periph.irqcount, "eic_isr_status_int");
+																		signal (BIT, 0, "eic_isr_write_int"); };
+																		
+										["write_code"] = { va("eic_isr_write_int", 1); };
+										["read_code"] = { va(vi("rddata_reg", periph.irqcount-1, 0), "eic_isr_status_int"); };
+										
+										["ackgen_code"] = { va("eic_isr_write_int", 0); };
+										["reset_code_main"] = { va("eic_isr_write_int", 0); };
+										["acklen"] = 1;
+										["extra_code"] = { va("eic_isr_clear_int", vi("wrdata_reg", periph.irqcount-1, 0)); };
+										["no_std_regbank"] = true;
+									};
+
+	local reg_imr = { ["__type"] = TYPE_REG; 
+										["__blockindex"] = 1000003;
+										["align"] = 1;
+										["name"] = "Interrupt mask register";
+										["description"] = "Shows which interrupts are enabled. 1 means that the interrupt associated with the bitfield is enabled";
+										["c_prefix"] = "EIC_IMR";
+										["hdl_prefix"] = "EIC_IMR";
+										["signals"] = { signal (SLV, periph.irqcount, "eic_imr_int"); };
+																		
+										["read_code"] = { va(vi("rddata_reg", periph.irqcount-1, 0), "eic_imr_int"); };
+										
+										["acklen"] = 1;
+										["no_std_regbank"] = true;
+									};
+
+
+	
+	foreach_reg({TYPE_IRQ}, function(irq) 
+		irq.index = irq_index;
+		irq_index = irq_index + 1;
+
+		table.insert(irq_triggers, { ["index"] = irq.index; ["trigger"] = irq.trigger; });
+
+		fix_prefix(irq);
+
+
+		local field_isr = {
+			["__blockindex"] = irq.index;			
+			["__type"] = TYPE_FIELD;
+			["type"] = BIT;
+			["name"] = irq.name;
+			["description"] = "read 1: interrupt '"..irq.name.."' is pending\nread 0: interrupt not pending\nwrite 1: clear interrupt '"..irq.name.."'\nwrite 0: no effect";
+			["c_prefix"] = irq.c_prefix;
+			["hdl_prefix"] = irq.hdl_prefix;
+
+			["access_bus"] = READ_WRITE;
+			["access_dev"] = READ_WRITE;
+		};
+
+		local field_ier = {
+			["__blockindex"] = irq.index;			
+			["__type"] = TYPE_FIELD;
+			["type"] = BIT;
+			["name"] = irq.name;
+			["description"] = "write 1: enable interrupt '"..irq.name.."'\nwrite 0: no effect";
+			["c_prefix"] = irq.c_prefix;
+			["hdl_prefix"] = irq.hdl_prefix;
+
+			["access_bus"] = WRITE_ONLY;
+			["access_dev"] = READ_ONLY;
+		};
+
+		local field_idr = {
+			["__blockindex"] = irq.index;			
+			["__type"] = TYPE_FIELD;
+			["type"] = BIT;
+			["name"] = irq.name;
+			["description"] = "write 1: disable interrupt '"..irq.name.."'\nwrite 0: no effect";
+			["c_prefix"] = irq.c_prefix;
+			["hdl_prefix"] = irq.hdl_prefix;
+
+			["access_bus"] = WRITE_ONLY;
+			["access_dev"] = READ_ONLY;
+		};
+
+		local field_imr = {
+			["__blockindex"] = irq.index;			
+			["__type"] = TYPE_FIELD;
+			["type"] = BIT;
+			["name"] = irq.name;
+			["description"] = "read 1: interrupt '"..irq.name.."' is enabled\nread 0: interrupt '"..irq.name.."' is disabled";
+			["c_prefix"] = irq.c_prefix;
+			["hdl_prefix"] = irq.hdl_prefix;
+			["access"] = ACCESS_RO_WO;
+
+			["access_bus"] = READ_ONLY;
+			["access_dev"] = WRITE_ONLY;
+		};
+
+
+	
+		table.insert(reg_idr, field_idr);
+		table.insert(reg_isr, field_isr);
+		table.insert(reg_imr, field_imr);
+		table.insert(reg_ier, field_ier);
+		
+		irq.full_prefix = string.lower("irq_"..irq.hdl_prefix);
+		irq.ports = { port(BIT, 0, "in", irq.full_prefix.."_i"); };
+	end);
+
+
+	add_global_signals( {
+		signal(SLV, periph.irqcount, "irq_inputs_vector_int");
+	});
+	
+			
+-- add the EIC registers to peripheral
+	table.insert(periph, reg_idr);
+	table.insert(periph, reg_ier);
+	table.insert(periph, reg_imr);
+	table.insert(periph, reg_isr);
+	
+	local maps = {	vgm("g_num_interrupts", 	periph.irqcount);
+									vpm("clk_i", 							"bus_clock_int");
+									vpm("rst_n_i", 						"rst_n_i");
+									vpm("irq_i", 							"irq_inputs_vector_int");
+									vpm("reg_imr_o",					"eic_imr_int");
+									vpm("reg_ier_i",					"eic_ier_int");
+									vpm("reg_ier_wr_stb_i",		"eic_ier_write_int");
+									vpm("reg_idr_i",					"eic_idr_int");
+									vpm("reg_idr_wr_stb_i",		"eic_idr_write_int");
+									vpm("reg_isr_o",					"eic_isr_status_int");
+									vpm("reg_isr_i",					"eic_isr_clear_int");
+									vpm("reg_isr_wr_stb_i",		"eic_isr_write_int");
+									vpm("wb_irq_o",						"wb_irq_o");
+								};
+		
+	local last_i;
+	
+	for i,v in ipairs(irq_triggers)	do
+		table_join(maps, { vgm(string.format("g_irq%02x_mode", v.index), v.trigger) });
+		last_i = i;
+	end
+
+	-- f****ing stupid VHDL :/
+	for i=last_i, 31 do 
+			table_join(maps, { vgm(string.format("g_irq%02x_mode", i), 0) });
+	end
+	
+	
+	
+	local irq_unit_code = { vinstance("eic_irq_controller_inst", "wbgen2_eic", maps	); };
+	
+	foreach_reg({TYPE_IRQ}, function(irq)
+														table_join(irq_unit_code, {va(vi("irq_inputs_vector_int", irq.index), irq.full_prefix.."_i")});
+													end);
+	
+	local fake_irq = {
+			["__type"] = TYPE_IRQ;
+			["no_docu"] = true;
+			["name"] = "IRQ_CONTROLLER";
+			["prefix"] = "IRQ_CONTROLLER";
+			["extra_code"] = irq_unit_code;
+	};
+
+	table.insert(periph, fake_irq);		
+
+end
+
+MAX_ACK_LENGTH = 10;
+
+function gen_wishbone_ports()
+  local ports = {
+		port(BIT, 0, "in", "rst_n_i", "", true),
+		port(BIT, 0, "in", "wb_clk_i", "", true),
+	};
+	
+  if(address_bus_width > 0 ) then
+		table_join(ports, { port(SLV, address_bus_width, "in", "wb_addr_i", "", true) });
+  end
+
+  table_join(ports, {
+										port(SLV, DATA_BUS_WIDTH, "in", "wb_data_i", "", true),
+										port(SLV, DATA_BUS_WIDTH, "out", "wb_data_o", "", true),
+										port(BIT, 0, "in", "wb_cyc_i", "", true),
+										port(SLV, math.floor((DATA_BUS_WIDTH+7)/8), "in", "wb_sel_i", "", true),
+										port(BIT, 0, "in", "wb_stb_i", "", true),
+										port(BIT, 0, "in", "wb_we_i", "", true),
+										port(BIT, 0, "out", "wb_ack_o", "", true)
+   									});
+
+	if(periph.irqcount > 0) then
+		table_join(ports, { port(BIT, 0, "out" ,"wb_irq_o", "", true); });
+	end
+
+    
+	add_global_ports(ports);
+	
+end
+
+
+function gen_wishbone_signals()
+local width = math.max(1, address_bus_width);
+
+local wb_sigs = {  signal(SLV, MAX_ACK_LENGTH, "ack_sreg"),
+									 signal(SLV, DATA_BUS_WIDTH, "rddata_reg"),
+									 signal(SLV, DATA_BUS_WIDTH, "wrdata_reg"),
+ 									 signal(SLV, DATA_BUS_WIDTH/8	, "bwsel_reg"),
+									 signal(SLV, width, "rwaddr_reg"),
+									 signal(BIT, 0, "ack_in_progress"),
+ 									 signal(BIT, 0, "wr_int"),
+ 									 signal(BIT, 0, "rd_int"),
+									 signal(BIT, 0, "bus_clock_int"),
+									 signal(SLV, DATA_BUS_WIDTH, "allones"),
+							 		 signal(SLV, DATA_BUS_WIDTH, "allzeros")
+ 				
+							 };
+
+	add_global_signals(wb_sigs);
+end
+
+
+-- generates the entire Wishbone bus access logic
+function gen_bus_logic_wishbone()
+  local s;
+
+	gen_wishbone_ports();
+	gen_wishbone_signals();
+
+  foreach_reg(ALL_REG_TYPES, function(reg) 
+			gen_abstract_code(reg);
+    end );
+
+	local resetcode={};
+	local ackgencode={};
+	local preackcode={};
+	
+  foreach_field(function(field, reg) 
+    table_join(resetcode, field.reset_code_main); 
+  end );
+
+  foreach_reg(ALL_REG_TYPES, function(reg) 
+    table_join(resetcode, reg.reset_code_main); 
+  end );
+
+
+  foreach_reg({TYPE_REG}, function(reg) 
+	    						foreach_subfield(reg, function(field, reg) 
+							     table_join(ackgencode, field.ackgen_code); 
+							     table_join(preackcode, field.ackgen_code_pre); 
+								end);
+							 table_join(ackgencode, reg.ackgen_code); 
+					     table_join(preackcode, reg.ackgen_code_pre); 
+					    end);
+
+	local fsmcode={};
+
+  foreach_reg({TYPE_REG}, function(reg) 
+    local acklen = find_max(reg, "acklen");
+		local rcode={};
+		local wcode={};
+	
+					
+		foreach_subfield(reg, function(field, reg) table_join(wcode, field.write_code); end );
+		foreach_subfield(reg, function(field, reg) table_join(rcode, field.read_code); end );		
+
+		local padcode = fill_unused_bits("rddata_reg", reg);
+
+
+		table_join(wcode, reg.write_code);
+		table_join(rcode, reg.read_code);
+
+		local rwcode = {
+			vif(vequal("wb_we_i" ,1), {
+	   		wcode,
+	   		padcode
+	   		
+			}, {
+				rcode
+			}); }; 
+
+		table_join(rwcode, { va(vi("ack_sreg", math.max(acklen-1, 0)), 1); } );
+		table_join(rwcode, { va("ack_in_progress", 1); });
+
+   	if(regbank_address_bits > 0) then
+   		rwcode = { vcase(reg.base, rwcode); }; 
+   	end
+		
+		table_join(fsmcode, rwcode);
+	end );
+
+  if(regbank_address_bits > 0) then
+
+		table_join(fsmcode, { vcasedefault({
+			vcomment("prevent the slave from hanging the bus on invalid address");
+			va("ack_in_progress", 1);
+			va(vi("ack_sreg", 0), 1);
+		}); });
+
+   	fsmcode = { vswitch(vi("rwaddr_reg", regbank_address_bits - 1, 0), fsmcode); };
+  end
+  
+  if(periph.ramcount > 0) then
+		local ramswitchcode = {};
+		
+		if(periph.fifocount + periph.regcount > 0) then
+-- append the register bank CASE statement if there are any registers or FIFOs
+			ramswitchcode = { vcase (0, fsmcode); };
+		end
+		
+		
+		
+	
+		foreach_reg({TYPE_RAM}, function(reg) 
+
+								local acklen = csel(options.register_data_output, 1, 0);												
+								table_join(ramswitchcode, { vcase(reg.select_bits , {
+									vif(vequal("rd_int" ,1), {
+							 			va(vi("ack_sreg", 0), 1);
+									}, {
+							 			va(vi("ack_sreg", acklen), 1);
+									});
+									va("ack_in_progress", 1);
+									} ); } );
+							end);
+
+		table_join(ramswitchcode, { 
+			vcasedefault({
+				vcomment("prevent the slave from hanging the bus on invalid address");
+				va("ack_in_progress", 1);
+				va(vi("ack_sreg", 0), 1);
+			 }) 
+		});
+
+  	fsmcode = { vswitch(vi("rwaddr_reg", address_bus_width-1, address_bus_width - address_bus_select_bits), ramswitchcode); };
+  end
+
+	fsmcode = { vif(vand(vequal("wb_cyc_i", 1), vequal("wb_stb_i", 1)), { fsmcode } ); };	
+
+		local code = {
+		vcomment("Some internal signals assignments. For (foreseen) compatibility with other bus standards.");
+
+		va("wrdata_reg", "wb_data_i");
+		va("bwsel_reg", "wb_sel_i");	
+		va("bus_clock_int", "wb_clk_i");
+		va("rd_int", vand("wb_cyc_i", vand("wb_stb_i", vnot("wb_we_i"))));
+		va("wr_int", vand("wb_cyc_i", vand("wb_stb_i", "wb_we_i")));
+		va("allones", vothers(1));
+		va("allzeros", vothers(0));
+		
+		
+		vcomment("");
+		vcomment("Main register bank access process.");
+
+		vsyncprocess("bus_clock_int", "rst_n_i", {
+		 vreset(0, {
+			va("ack_sreg", 0);
+			va("ack_in_progress", 0);
+			va("rddata_reg", 0);
+			resetcode
+		 });
+
+		 vposedge ({
+			 vcomment("advance the ACK generator shift register");
+			 va(vi("ack_sreg", MAX_ACK_LENGTH-2, 0), vi("ack_sreg", MAX_ACK_LENGTH-1, 1));
+			 va(vi("ack_sreg", MAX_ACK_LENGTH-1), 0);
+		
+			 vif(vequal("ack_in_progress", 1), {
+			 	 vif(vequal(vi("ack_sreg", 0), 1), { ackgencode; va("ack_in_progress", 0); }, preackcode);
+			 }, { 
+				fsmcode
+			 });
+			});
+		});
+	};		 
+
+
+-- we have some RAMs in our slave?
+	if(periph.ramcount > 0) then
+
+-- the data output is muxed between RAMs and register bank. Here we generate a combinatorial mux if we don't want the output to be registered. This gives us
+-- memory access time of 2 clock cycles. Otherwise the ram output is handled by the main process.
+		if(not options.register_data_output) then
+			local sens_list = {"rddata_reg","rwaddr_reg"};
+			local mux_switch_code = {};
+			local mux_code = {vswitch(vi("rwaddr_reg", address_bus_width-1, address_bus_width - address_bus_select_bits), mux_switch_code); };
+
+			local output_mux_process = {vcomment("Data output multiplexer process"); vcombprocess(sens_list, mux_code);};
+			
+			 foreach_reg({TYPE_RAM}, function(reg) 
+  								table.insert(sens_list, reg.full_prefix.."_rddata_int");
+									
+									local assign_code =  { va(vi("wb_data_o", reg.width-1, 0), reg.full_prefix.."_rddata_int"); };
+									
+									if(reg.width < DATA_BUS_WIDTH)  then
+										table_join(assign_code, { va(vi("wb_data_o", DATA_BUS_WIDTH-1, reg.width), 0); });
+									end
+									
+  								
+
+  								table_join(mux_switch_code, { vcase(reg.select_bits, assign_code ); } );
+  						end);
+
+			table.insert(sens_list, "wb_addr_i");		
+
+			table_join(mux_switch_code, {vcasedefault(va("wb_data_o", "rddata_reg")); } );
+			table_join(code, output_mux_process);
+		end
+
+-- now generate an address decoder for the RAMs, driving rd_i and wr_i lines.
+
+		local sens_list = { "wb_addr_i", "rd_int", "wr_int" };
+		local proc_body = { };
+
+			 foreach_reg({TYPE_RAM}, function(reg) 
+  							--	table.insert(sens_list, reg.full_prefix.."_rddata_int");
+									table_join(proc_body, {vif(vequal(vi("wb_addr_i", address_bus_width-1, address_bus_width - address_bus_select_bits), reg.select_bits), {
+										va(reg.full_prefix.."_rd_int", "rd_int");
+										va(reg.full_prefix.."_wr_int", "wr_int");
+									}, {
+										va(reg.full_prefix.."_wr_int", 0);
+										va(reg.full_prefix.."_rd_int", 0);
+									});  });
+  						end);
+
+		table_join(code, {vcomment("Read & write lines decoder for RAMs"); vcombprocess(sens_list, proc_body); });
+
+	else -- no RAMs in design? wire rddata_reg directly to wb_data_o
+		table_join(code, {vcomment("Drive the data output bus"); va("wb_data_o", "rddata_reg") } );
+	end
+
+  foreach_reg(ALL_REG_TYPES, function(reg) 
+								if(reg.extra_code ~= nil) then
+									table_join(code, {vcomment("extra code for reg/fifo/mem: "..reg.name);});
+									table_join(code, reg.extra_code);
+
+								end
+
+							  foreach_subfield(reg, function(field, reg) 
+						   		if (field.extra_code ~= nil) then
+						   			table_join(code, {vcomment(field.name); field.extra_code}); 
+						   		end	
+						   	end );
+							end);
+	
+	if(address_bus_width > 0) then
+		table_join(code, { 	va("rwaddr_reg", "wb_addr_i");	});
+	else
+		table_join(code, { 	va("rwaddr_reg", vothers(0));	});
+	end
+	
+	table_join(code, { vcomment("ACK signal generation. Just pass the LSB of ACK counter.");
+										 va("wb_ack_o", vi("ack_sreg", 0));
+										});
+
+	return code;
+end
+
+
+
+function parse_args(arg)
+	local n=1;
+
+	if(arg[1] == nil) then
+		print("wbgen2 version "..wbgen2_version);
+		print("(c) Tomasz Wlostowski/CERN BE-Co-HT 2010");
+		print("");
+		print("usage: "..arg[0].." input_file.wb [options]");
+		print("");
+		print("Options: ");
+		print("-target [classic / pipelined]   - chooses between classic Wishbone bus and HT pipelined Wishbone.");
+		print("-lang   [vhdl / verilog]        - chooses the HDL language to be generated");
+		print("-vo     [file.vhdl / file.v]    - generates VHDL/Verilog code for the slave Wishbone core.");
+		print("-co     [file.h]                - generates C header file containing register definitions and access macros");
+		print("-consto [constants.v]           - generates Verilog file containing addresses of all registers/rams and writes them to specified file. Useful for writing testbenches.");
+		print("-doco   [documentation.html]    - generates nice HTML documentation and writes it to specified file.");
+
+		print("");
+		os.exit(0);
+	end
+	
+	input_wb_file = arg[1];
+
+	vhdl_gen_reg_constants = false;
+	vlog_gen_reg_constants = false;
+
+	n=2;
+	while(arg[n] ~= nil) do
+		local sw = arg[n];
+		
+		if (sw == "-vo") then
+			options.output_hdl_file = chk_nil(arg[n+1], "HDL output filename expected");
+			n=n+2;
+		elseif (sw == "-co") then
+			options.output_c_header_file = chk_nil(arg[n+1], "C header output filename expected");
+			n=n+2;
+		elseif (sw == "-consto") then
+			options.output_vlog_constants_file = chk_nil(arg[n+1],"Verilog constants filename expected");
+			n=n+2;
+		elseif (sw == "-doco") then
+			options.output_doc_file = chk_nil(arg[n+1],"Documentation filename expected");
+			n=n+2;
+		elseif (sw == "-lang") then
+			options.lang = chk_nil(arg[n+1],"Target HDL language name expected");
+			if (options.lang ~= "vhdl" and options.lang ~= "verilog") then
+				die("Unknown HDL: "..options.lang);
+			end
+			n=n+2;
+		else
+			n=n+1;
+		end
+	
+	end
+
+end
+
+parse_args(arg);
+
+dofile(input_wb_file);
+
+if(periph == nil) then die ("missing peripheral declaration"); end
+
+    
+
+foreach_field( fix_prefix );
+foreach_field( fix_access );
+
+foreach_reg(ALL_REG_TYPES, fix_prefix );
+
+periph = fix_prefix(periph);
+
+wbgen_count_subblocks();
+wbgen_generate_eic();										
+
+foreach_reg(ALL_REG_TYPES, fix_prefix );
+
+
+foreach_reg(ALL_REG_TYPES, function(reg) 
+	reg.total_size=0; 
+	reg.current_offset=0;
+end);
+
+
+foreach_field(calc_size);
+foreach_reg({TYPE_REG, TYPE_RAM, TYPE_FIFO}, check_max_size);
+foreach_field(calc_field_offset);
+
+foreach_reg({TYPE_REG, TYPE_RAM, TYPE_FIFO}, calc_address_sizes);
+
+assign_addresses();
+
+tree=gen_bus_logic_wishbone();
+
+cgen_build_signals_ports();
+
+if(options.output_hdl_file ~= nil) then
+	cgen_generate_init(options.output_hdl_file)
+	if (options.lang == "vhdl") then
+		cgen_generate_vhdl_code(tree);
+	elseif (options.lang == "verilog") then
+		cgen_generate_verilog_code(tree);
+	end
+	
+	cgen_generate_done();
+end
+
+if(options.output_c_header_file ~= nil) then
+	cgen_generate_init(options.output_c_header_file)
+	cgen_generate_c_header_code();
+	cgen_generate_done();
+end
+
+if(options.output_vlog_constants_file ~= nil) then
+	cgen_gen_vlog_constants(options.output_vlog_constants_file);
+end
+
+if(options.output_doc_file ~= nil) then
+	cgen_generate_init(options.output_doc_file);
+	cgen_generate_documentation();
+	cgen_generate_done();
+end
+
