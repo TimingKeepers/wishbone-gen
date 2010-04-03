@@ -928,7 +928,7 @@ function cgen_vhdl_entity()
 		if(i == table.getn(g_portlist)) then last = true; else last = false; end
 
 -- if we have a comment associated with current port, let's emit it before the port definition.
-		if(port.comment ~= nil) then
+		if(port.comment ~= nil and port.comment ~= "") then
 			emitx("-- "..port.comment.."\n");
 		end
 	
@@ -4002,10 +4002,9 @@ function gen_bus_logic_wishbone()
 		local rwcode = {
 			vif(vequal("wb_we_i" ,1), {
 	   		wcode,
-	   		padcode
-	   		
 			}, {
-				rcode
+				rcode,
+	   		padcode
 			}); }; 
 
 		table_join(rwcode, { va(vi("ack_sreg", math.max(acklen-1, 0)), 1); } );

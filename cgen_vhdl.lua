@@ -80,7 +80,7 @@ function cgen_vhdl_entity()
 		if(i == table.getn(g_portlist)) then last = true; else last = false; end
 
 -- if we have a comment associated with current port, let's emit it before the port definition.
-		if(port.comment ~= nil) then
+		if(port.comment ~= nil and port.comment ~= "") then
 			emitx("-- "..port.comment.."\n");
 		end
 	

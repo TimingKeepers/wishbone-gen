@@ -105,10 +105,9 @@ function gen_bus_logic_wishbone()
 		local rwcode = {
 			vif(vequal("wb_we_i" ,1), {
 	   		wcode,
-	   		padcode
-	   		
 			}, {
-				rcode
+				rcode,
+	   		padcode
 			}); }; 
 
 		table_join(rwcode, { va(vi("ack_sreg", math.max(acklen-1, 0)), 1); } );
