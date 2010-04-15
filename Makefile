@@ -11,3 +11,6 @@ all:	$(SOURCES)
 
 %.v:	%.vhd
 		./utils/vhd2vl/src/vhd2vl $^ > $@
+
+clean:
+		rm -rf $(OUTPUT)
