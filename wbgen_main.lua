@@ -26,60 +26,82 @@ options.target_interconnect = "wb-classic";
 options.register_data_output = false;
 options.lang = "vhdl";
 
+require "alt_getopt"
+
+local usage_string = [[slave Wishbone generator
+  wbgen2 [options] input_file.wb]]
+
+local commands_string = [[options:
+  -C, --co=FILE		Write the slave's generated C header file to FILE
+  -D, --doco=FILE	Write the slave's generated HTML documentation to FILE
+  -h, --help		  Show this help text
+  -l, --lang=LANG	Set the output Hardware Description Language (HDL) to LANG
+			  Valid values for LANG: {vhdl,verilog}
+  -K, --constco=FILE	Populate FILE with Verilog output (mainly constants)
+  -v, --version		Show version information
+  -V, --vo=FILE		Write the slave's generated HDL code to FILE
+
+wbgen2 (c) Tomasz Wlostowski/CERN BE-CO-HT 2010]]
+
+function usage()
+	 print(usage_string)
+	 print("Try `wbgen2 -h' for more information")
+end
+
+function usage_complete()
+	 print(usage_string)
+	 print(commands_string)
+end
+
 function parse_args(arg)
-	local n=1;
+	local long_opts = {
+		help		= "h",
+		version		= "v",
+		co		= "C",
+		doco		= "D",
+		constco		= "K",
+		lang		= "l",
+		vo		= "V",
+	}
+	local optarg
+	local optind
 
-	if(arg[1] == nil) then
-		print("wbgen2 version "..wbgen2_version);
-		print("(c) Tomasz Wlostowski/CERN BE-Co-HT 2010");
-		print("");
-		print("usage: "..arg[0].." input_file.wb [options]");
-		print("");
-		print("Options: ");
-		print("-target [classic / pipelined]   - chooses between classic Wishbone bus and HT pipelined Wishbone.");
-		print("-lang   [vhdl / verilog]        - chooses the HDL language to be generated");
-		print("-vo     [file.vhdl / file.v]    - generates VHDL/Verilog code for the slave Wishbone core.");
-		print("-co     [file.h]                - generates C header file containing register definitions and access macros");
-		print("-consto [constants.v]           - generates Verilog file containing addresses of all registers/rams and writes them to specified file. Useful for writing testbenches.");
-		print("-doco   [documentation.html]    - generates nice HTML documentation and writes it to specified file.");
+	optarg,optind = alt_getopt.get_opts (arg, "hvC:D:K:l:V:", long_opts)
+	for key,value in pairs (optarg) do
+		if key == "h" then
+			usage_complete()
+			os.exit(0)
 
-		print("");
-		os.exit(0);
-	end
-	
-	input_wb_file = arg[1];
+		elseif key == "v" then
+			print("wbgen2 version "..wbgen2_version)
+			os.exit(0)
 
-	vhdl_gen_reg_constants = false;
-	vlog_gen_reg_constants = false;
+		elseif key == "C" then
+			options.output_c_header_file = value
 
-	n=2;
-	while(arg[n] ~= nil) do
-		local sw = arg[n];
-		
-		if (sw == "-vo") then
-			options.output_hdl_file = chk_nil(arg[n+1], "HDL output filename expected");
-			n=n+2;
-		elseif (sw == "-co") then
-			options.output_c_header_file = chk_nil(arg[n+1], "C header output filename expected");
-			n=n+2;
-		elseif (sw == "-consto") then
-			options.output_vlog_constants_file = chk_nil(arg[n+1],"Verilog constants filename expected");
-			n=n+2;
-		elseif (sw == "-doco") then
-			options.output_doc_file = chk_nil(arg[n+1],"Documentation filename expected");
-			n=n+2;
-		elseif (sw == "-lang") then
-			options.lang = chk_nil(arg[n+1],"Target HDL language name expected");
+		elseif key == "D" then
+			options.output_doc_file = value
+
+		elseif key == "K" then
+			options.output_vlog_constants_file = value
+
+		elseif key == "l" then
+			options.lang = value
 			if (options.lang ~= "vhdl" and options.lang ~= "verilog") then
 				die("Unknown HDL: "..options.lang);
 			end
-			n=n+2;
-		else
-			n=n+1;
+
+		elseif key == "V" then
+			options.output_hdl_file = value
 		end
-	
 	end
 
+	if(arg[optind] == nil) then
+		usage()
+		os.exit(0)
+	end
+
+	input_wb_file = arg[optind];
 end
 
 parse_args(arg);

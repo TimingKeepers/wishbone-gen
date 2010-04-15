@@ -5,6 +5,8 @@ Option "executable"
 
 Output "wbgen2"
 
+Module "alt_getopt" "modules/alt_getopt.lua"
+
 Main "wbgen_common.lua"
 Main "cgen_common.lua"
 Main "cgen_vhdl.lua"
