@@ -802,6 +802,6 @@ XML_DoubleClick = Edit
 XML_CustomDoubleClick = 
 LOGFILE_DoubleClick = Edit
 LOGFILE_CustomDoubleClick = 
-EditorState = {tabbed horizontal 1} {/home/slayer/wbgen2_svn/wbgen2/examples/gpio_port/run.do 0 0}
+EditorState = 
 Project_Major_Version = 6
 Project_Minor_Version = 2
