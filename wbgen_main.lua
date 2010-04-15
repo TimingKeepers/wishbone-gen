@@ -26,22 +26,6 @@ options.target_interconnect = "wb-classic";
 options.register_data_output = false;
 options.lang = "vhdl";
 
-function my_dofile(name)
-	dofile("~/wbgen2_svn/wbgen2/"..name);
-end
-
-my_dofile("wbgen_common.lua");
-my_dofile("cgen_common.lua");
-my_dofile("cgen_vhdl.lua");
-my_dofile("cgen_verilog.lua");
-my_dofile("cgen_c_headers.lua");
-my_dofile("cgen_doc.lua");
-my_dofile("wbgen_regbank.lua");
-my_dofile("wbgen_rams.lua");
-my_dofile("wbgen_eic.lua");
-my_dofile("target_wishbone.lua");
-
-
 function parse_args(arg)
 	local n=1;
 

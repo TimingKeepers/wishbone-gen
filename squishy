@@ -1,0 +1,19 @@
+-- Squish - One language to write them all, one squisher to squish them
+-- http://matthewwild.co.uk/projects/squish/readme.html
+
+Option "executable"
+
+Output "wbgen2"
+
+Main "wbgen_common.lua"
+Main "cgen_common.lua"
+Main "cgen_vhdl.lua"
+Main "cgen_verilog.lua"
+Main "cgen_c_headers.lua"
+Main "cgen_doc.lua"
+Main "wbgen_regbank.lua"
+Main "wbgen_rams.lua"
+Main "wbgen_eic.lua"
+Main "target_wishbone.lua"
+Main "wbgen_main.lua"
+

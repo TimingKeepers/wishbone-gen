@@ -6,7 +6,7 @@ VERILOG_LIBRARY = $(VHDL_LIBRARY:.vhd=.v)
 
 all:	$(SOURCES) 
 #		make -C utils/vhd2vl/src
-		./utils/process_dofiles.lua wbgen_main.lua wbgen2
+		squish
 		chmod +x wbgen2
 
 .PHONY: all clean
