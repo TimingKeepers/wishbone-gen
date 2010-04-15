@@ -9,6 +9,8 @@ all:	$(SOURCES)
 		./utils/process_dofiles.lua wbgen_main.lua wbgen2
 		chmod +x wbgen2
 
+.PHONY: all clean
+
 %.v:	%.vhd
 		./utils/vhd2vl/src/vhd2vl $^ > $@
 
