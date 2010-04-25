@@ -6,7 +6,7 @@ VERILOG_LIBRARY = $(VHDL_LIBRARY:.vhd=.v)
 
 all:	$(SOURCES) 
 #		make -C utils/vhd2vl/src
-		squish
+		./squish
 		chmod +x wbgen2
 
 .PHONY: all clean
