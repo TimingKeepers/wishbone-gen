@@ -20,10 +20,13 @@ ALL_REG_TYPES = {TYPE_REG, TYPE_RAM, TYPE_FIFO, TYPE_IRQ};
 -- FIFO register flags
 FIFO_FULL = 0x1;
 FIFO_EMPTY = 0x2;
-FIFO_ALMOST_FULL = 0x4;
-FIFO_ALMOST_EMPTY = 0x8;
 FIFO_CLEAR = 0x10;
 FIFO_COUNT = 0x20;
+
+-- FIFO directions
+
+BUS_TO_CORE = 1;
+CORE_TO_BUS = 2;
 
 -- field access flags
 READ_ONLY = 0x1;
@@ -188,11 +191,15 @@ function calc_field_offset(field, reg)
 
 -- align the field offset next to the current offset in the reg
     local ofs = reg.current_offset;
-    ofs = align(field, ofs);    
+	
+    ofs = align(field, ofs);
+
 
 -- update the current offset
     reg.current_offset = ofs + field.size;
     field.offset = ofs;
+		field.offset_unaligned = reg.current_offset_unaligned;
+		reg.current_offset_unaligned = reg.current_offset_unaligned + field.size;
 
 -- calculate the number of fields in the register
 		if(reg.num_fields == nil) then reg.num_fields = 0; end
@@ -218,6 +225,11 @@ function match(var, values)
 			if(var==v) then return true; end
     end
   return false;
+ end
+
+function inset(var, set)
+	 for i,v in ipairs(set) do if(var == v) then return true; end end
+	 return false;
 end
 
 -- simulates C statement: a = cond ? x : y -> a = csel(cond, x, y);
@@ -319,10 +331,10 @@ function calc_address_sizes(reg)
 		all_regs_size = align(reg, all_regs_size) + 1;
 -- for FIFOS: 
 -- size of all FIFO fields (rounded up to multiple of 32 bits) + 1 extra FIFO control register
-  elseif (reg.__type == TYPE_FIFO) then
-		fifo_size = math.floor((reg.total_size + DATA_BUS_WIDTH - 1) / DATA_BUS_WIDTH) + 1;
-		all_regs_size = all_regs_size + fifo_size;
-		reg.num_fifo_regs = fifo_size;
+--  elseif (reg.__type == TYPE_FIFO) then
+--		fifo_size = math.floor((reg.total_size + DATA_BUS_WIDTH - 1) / DATA_BUS_WIDTH) + 1;
+--		all_regs_size = all_regs_size + fifo_size;
+--		reg.num_fifo_regs = fifo_size;
 -- for RAMs:
   elseif (reg.__type == TYPE_RAM) then
 		if(not is_power_of_2(reg.size)) then die ("RAM '"..reg.name.."': memory size must be a power of 2"); end
@@ -368,9 +380,9 @@ function assign_addresses()
 			if(reg.__type==TYPE_REG) then
 		    reg.base = align(reg, i);
 		    i=reg.base+1;
-			elseif(reg.__type == TYPE_FIFO) then
-		    reg.base = i;
-		    i=i+reg.num_fifo_regs;
+--			elseif(reg.__type == TYPE_FIFO) then
+	--	    reg.base = i;
+		--    i=i+reg.num_fifo_regs;
 			end
     end );
     
@@ -391,9 +403,9 @@ function table_join(table_out, table_in)
     local i,v;
     
     if(table_in == nil) then return; end
-    
-    for i,v in pairs(table_in) do
-	table.insert(table_out, v);
+
+    for i,v in ipairs(table_in) do
+			 table.insert(table_out, v);
     end
 end
 

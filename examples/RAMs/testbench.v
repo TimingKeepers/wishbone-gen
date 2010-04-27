@@ -227,6 +227,12 @@ module main;
 	    fail =1;
 
       end
+
+      if(fail)
+	$display("TESTS FAILED");
+      else
+	$display("TESTS PASSED");
+
       end
       
 /*
@@ -247,10 +253,6 @@ module main;
       end
 
       
-      if(fail)
-	$display("TESTS FAILED");
-      else
-	$display("TESTS PASSED");
    end
  -----/\----- EXCLUDED -----/\----- */
 

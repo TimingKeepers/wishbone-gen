@@ -127,13 +127,16 @@ foreach_reg(ALL_REG_TYPES, fix_prefix );
 
 foreach_reg(ALL_REG_TYPES, function(reg) 
 	reg.total_size=0; 
-	reg.current_offset=0;
+	reg.current_offset = 0;
+	reg.current_offset_unaligned = 0;
 end);
 
 
 foreach_field(calc_size);
 foreach_reg({TYPE_REG, TYPE_RAM, TYPE_FIFO}, check_max_size);
 foreach_field(calc_field_offset);
+
+foreach_reg({TYPE_FIFO}, gen_code_fifo);
 
 foreach_reg({TYPE_REG, TYPE_RAM, TYPE_FIFO}, calc_address_sizes);
 

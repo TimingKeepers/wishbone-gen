@@ -626,14 +626,24 @@ end
 function fill_unused_bits(target, reg)
 	local t={};
 	local code={};
+	local all_wo = true;
 
 	foreach_subfield(reg, function(field, reg)
 													if(field.type == SLV or field.type == SIGNED or field.type == UNSIGNED) then
 														for i=field.offset, (field.offset+field.size-1) do t[i] = 1; end
 													elseif(field.type == BIT or field.type == MONOSTABLE)  then
 														t[field.offset] = 1;
-													end
+												 end
+
+												 if(field.access_bus ~= WRITE_ONLY) then all_wo = false; end
 												end);
+
+	if(all_wo) then
+		 for i = 0, DATA_BUS_WIDTH-1 do
+				 table_join(code, { va(vi(target, i), vundefined()); });
+		 end
+		 return code;
+	end
 
 	for i = 0, DATA_BUS_WIDTH-1 do
 		if(t[i] == nil) then
@@ -665,13 +675,14 @@ function gen_abstract_code(reg)
  	reg.full_hdl_prefix = string.lower(periph.hdl_prefix.."_"..reg.hdl_prefix);
 
 	if(reg.no_std_regbank == true) then
+		 print("reg: ",reg.name," - no std regbank");
 		return;
 	end
 
 
 	if(reg.__type == TYPE_RAM) then
 		gen_code_ram(reg);
-  else
+ else
   	foreach_subfield(reg, function(field, reg) gen_hdl_code_reg_field(field, reg); end );
   end
 end

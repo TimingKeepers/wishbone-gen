@@ -435,7 +435,7 @@ function cgen_generate_vhdl_code(tree)
 		else
 	-- or emit the value/signal
 			emitx(gen_subrange(tsa));
-		end
+	 end
 	end
 
 
@@ -473,7 +473,7 @@ function cgen_generate_vhdl_code(tree)
 
 	-- 
 	function cgen_vhdl_comment(node)
-	--	print("COMMENT: "..node.str);
+	print("COMMENT: "..node.str);
 		emitx("-- "..node.str.."\n");
 	end
 
@@ -608,7 +608,7 @@ function cgen_generate_vhdl_code(tree)
  			["openpin"]				= cgen_vhdl_openpin;
 		};
 
-	--	print(node);
+--		print(node);
 
 		for i,v in pairs(node) do
 			-- no type? probably just a block of code. recurse it deeper.
@@ -617,7 +617,7 @@ function cgen_generate_vhdl_code(tree)
 				recurse(v);
 			else
 				local func = generators[v.t];
-		--		print(v.t);
+	--		print(v.t);
 				if(func == nil) then
 					die("Unimplemented generator: "..v.t);
 				end

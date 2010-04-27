@@ -5,7 +5,7 @@ set lang "vhdl"
 
 set library_files {
    "../../lib/wbgen2_pkg.vhd"
-   "../../lib/altera/wbgen2_dpssram.vhd"
+   "../../lib/wbgen2_dpssram.vhd"
 };
 
 mkdir -p output

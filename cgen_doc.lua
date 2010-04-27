@@ -197,11 +197,15 @@ function cgen_doc_hdl_symbol()
 				end
 			end
 
-			foreach_subfield(reg, function(field, reg) 
-				for i,v in pairs(field.ports) do
-					table.insert(ports ,v);
-				end
-			end);
+
+			foreach_subfield(reg, 
+					 function(field, reg) 
+					    if(field.ports ~= nil) then
+					       for i,v in pairs(field.ports) do
+						  table.insert(ports ,v);
+					       end
+					    end
+					 end);
 		
 		end
 	end);
@@ -295,6 +299,7 @@ function cgen_doc_header_and_toc()
 	emit('<h1 class="heading">'..periph.hdl_entity..'</h1>');
 	emit('<h3>'..periph.name..'</h3>');
 	local t = periph.description;
+	if(t == nil) then t = ""; end
 	emit('<p>'..string.gsub(t, "\n", "<br>")..'</p>');
 	emit('<h3>Contents:</h3>');
 
@@ -325,7 +330,7 @@ function cgen_doc_memmap()
 	row[4].text = "VHDL/Verilog prefix";
 	row[5].text = "C prefix";
 
-	foreach_reg({TYPE_REG, TYPE_FIFO}, function(reg)
+	foreach_reg({TYPE_REG}, function(reg)
 		if(reg.full_hdl_prefix ~= nil) then
 			htable_add_row(tbl, n);
 			local row = tbl.data[n]; n=n+1;
@@ -605,7 +610,7 @@ function cgen_generate_documentation()
 
 	cgen_new_snippet();
 	emit(hsection(3,0, "Register description"));
-	foreach_reg({TYPE_REG, TYPE_FIFO}, function(reg) if(reg.no_docu == nil or reg.no_docu == false)then cgen_doc_reg(reg);end end);
+	foreach_reg({TYPE_REG}, function(reg) if(reg.no_docu == nil or reg.no_docu == false)then cgen_doc_reg(reg);end end);
 	local h_regs = cgen_get_snippet();
 
 	

@@ -29,6 +29,27 @@ package wbgen2_pkg is
       wr_a_i    : in  std_logic;
       wr_b_i    : in  std_logic);
   end component;
+
+  component wbgen2_fifo_async
+    generic (
+      g_size       : integer;
+      g_width      : integer;
+      g_usedw_size : integer);
+    port (
+      rd_clk_i   : in  std_logic;
+      rd_req_i   : in  std_logic;
+      rd_data_o  : out std_logic_vector(g_width-1 downto 0);
+      rd_empty_o : out std_logic;
+      rd_full_o  : out std_logic;
+      rd_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0);
+      wr_clk_i   : in  std_logic;
+      wr_req_i   : in  std_logic;
+      wr_data_i  : in  std_logic_vector(g_width-1 downto 0);
+      wr_empty_o : out std_logic;
+      wr_full_o  : out std_logic;
+      wr_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0));
+  end component;
+  
   component wbgen2_eic
     generic (
       g_num_interrupts : natural;

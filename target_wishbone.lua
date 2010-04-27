@@ -1,3 +1,5 @@
+-- -*- Mode: LUA; tab-width: 2 -*-
+
 
 MAX_ACK_LENGTH = 10;
 

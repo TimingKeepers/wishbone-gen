@@ -185,7 +185,7 @@ begin  -- syn
       wren_a    => wr_a_i,
       wren_b    => wr_b_i,
       clock0    => clk_a_i,
-  --    clock1    => clk_b_i,
+      clock1    => '0',
       byteena_a => bwsel_int_a,
       byteena_b => bwsel_int_b,
       address_a => addr_a_i,

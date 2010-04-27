@@ -250,6 +250,10 @@ function cgen_build_siglist()
 	siglist = tree_2_table("signals");
 	
 	table_join(siglist, global_signals);
+
+	for i,v in pairs(siglist) do
+	   print("SIGNAL: ", v.name);
+	end
 	
 	return siglist;
 end

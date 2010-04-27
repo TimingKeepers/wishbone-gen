@@ -1,0 +1,47 @@
+peripheral {
+	name ="FIFO test";
+	prefix="fifotest";
+	hdl_entity="fifotest";
+	
+	fifo_reg {
+		size = 256;
+		direction = BUS_TO_CORE;
+		prefix = "fifo1";
+		name = "fifo1";
+		flags_bus = {FIFO_FULL, FIFO_EMPTY, FIFO_COUNT};
+		flags_dev = {FIFO_FULL, FIFO_EMPTY, FIFO_COUNT};
+		
+		field {
+			name = "ts value R";
+			prefix = "ts_r";
+			type = SLV;
+			size = 28;
+		};
+
+		field {
+			name = "ts value F";
+			prefix = "ts_f";
+			type = SLV;
+			size = 4;
+		};
+
+
+		field {
+			name ="port id";
+			prefix = "pid";
+			type = SLV;
+			size = 5;
+			align= 16;
+		};
+
+		
+		field {
+			name = "frame id value";
+			prefix = "fid";
+			type = SLV;
+			size = 16;
+			align = 16;
+		};
+		
+	};
+};
