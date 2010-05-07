@@ -23,9 +23,14 @@ entity wbgen2_fifo_sync is
       rd_data_o : out std_logic_vector(g_width-1 downto 0);
       rd_req_i  : in  std_logic;
 
-      empty_o : out std_logic;
-      full_o  : out std_logic;
-      usedw_o : out std_logic_vector(g_usedw_size-1 downto 0)
+      wr_empty_o : out std_logic;
+      wr_full_o  : out std_logic;
+      wr_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0);
+
+      rd_empty_o : out std_logic;
+      rd_full_o  : out std_logic;
+      rd_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0)
+
       );
 end wbgen2_fifo_sync;
 
@@ -46,7 +51,7 @@ architecture rtl of wbgen2_fifo_sync is
       use_eab                 : string
       );
     port (
-      usedw : out std_logic_vector (7 downto 0);
+      usedw : out std_logic_vector (g_usedw_size-1 downto 0);
       rdreq : in  std_logic;
       empty : out std_logic;
       clock : in  std_logic;
@@ -57,6 +62,10 @@ architecture rtl of wbgen2_fifo_sync is
       );
   end component;
 
+  signal empty_int, full_int : std_logic;
+  signal usedw_int           : std_logic_vector(g_usedw_size -1 downto 0);
+  
+  
 begin
   
   scfifo_component : scfifo
@@ -77,10 +86,19 @@ begin
       clock => clk_i,
       wrreq => wr_req_i,
       data  => wr_data_i,
-      usedw => usedw_o,
-      empty => empty_o,
+      usedw => usedw_int,
+      empty => empty_int,
       q     => rd_data_o,
-      full  => full_o
+      full  => full_int
       );
 
+  rd_empty_o <= empty_int;
+  rd_full_o <= full_int;
+  rd_usedw_o <= usedw_int;
+
+  wr_empty_o <= empty_int;
+  wr_full_o <= full_int;
+  wr_usedw_o <= usedw_int;
+  
+  
 end rtl;

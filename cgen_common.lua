@@ -252,7 +252,7 @@ function cgen_build_siglist()
 	table_join(siglist, global_signals);
 
 	for i,v in pairs(siglist) do
-	   print("SIGNAL: ", v.name);
+	   dbg("SIGNAL: ", v.name);
 	end
 	
 	return siglist;

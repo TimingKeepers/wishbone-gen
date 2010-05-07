@@ -675,7 +675,7 @@ function gen_abstract_code(reg)
  	reg.full_hdl_prefix = string.lower(periph.hdl_prefix.."_"..reg.hdl_prefix);
 
 	if(reg.no_std_regbank == true) then
-		 print("reg: ",reg.name," - no std regbank");
+		 dbg("reg: ",reg.name," - no std regbank");
 		return;
 	end
 

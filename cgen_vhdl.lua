@@ -87,7 +87,7 @@ function cgen_vhdl_entity()
 -- generate code for the port
 		local line = string.format("%-40s : %-6s %s", port.name, port.dir, fieldtype_2_vhdl[port.type]);
 
-		if(port.range > 0) then
+		if(port.range > 1) then
 			line = line.."("..(port.range-1).." downto 0)";
 		end    
 
@@ -113,7 +113,7 @@ function cgen_vhdl_entity()
 -- we do it the same way as for the ports. 
 	for i,v in pairs (g_siglist) do
 		s=string.format("signal %-40s : %-15s", v.name, fieldtype_2_vhdl[v.type]);
-		if(v.range > 0) then
+		if(v.range > 0 and v.type ~= BIT) then
 			s=s..string.format("(%d downto 0)", v.range-1);
 		end
 		s=s..";";
@@ -310,7 +310,9 @@ function cgen_generate_vhdl_code(tree)
 			return "open";
 		end
 
-		if(t.h ~= nil and t.l == nil) then
+		--print("gensub: ", t.name);
+
+		if (t.h ~= nil and ( t.l == nil or (t.l == t.h))) then
 			return t.name.."("..t.h..")";
 		elseif(t.h ~= nil and t.l ~= nil) then
 			return t.name.."("..t.h.." downto "..t.l..")";
@@ -335,6 +337,9 @@ function cgen_generate_vhdl_code(tree)
 	-- generates a VHDL type-conversion code for assignment between tsd (destination node) and tss (source node).
 	function gen_vhdl_typecvt(tsd, tss)
 
+	-- print("Gen_typecvt:",  tsd.name);
+	-- print("Gen_typecvt:",  tss.name, tss.type);
+
 	-- types match? Coool, we have nothing to do
 		if(tsd.type == tss.type) then 
 			return(gen_subrange(tss));
@@ -358,7 +363,7 @@ function cgen_generate_vhdl_code(tree)
 		elseif (tss.type == BIT) then
 
 			if(tsd.type == SLV) then
-				return(gen_subrange(tss.name));
+				return(gen_subrange(tss));
 			else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
 
 		elseif (tss.type == SIGNED or tss.type == UNSIGNED) then
@@ -366,7 +371,7 @@ function cgen_generate_vhdl_code(tree)
 	-- dest: slv <= src: signed/unsigned
 			if(tsd.type == SLV) then
 				return("std_logic_vector("..gen_subrange(tss)..")");
-			else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
+		 else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
 
 		elseif (tss.type == SLV) then
 
@@ -376,8 +381,11 @@ function cgen_generate_vhdl_code(tree)
 			elseif (tsd.type == UNSIGNED) then
 --					print(tss);
 				return("unsigned("..gen_subrange(tss)..")");
-			else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
-
+		 elseif (tsd.type == BIT) then
+				return gen_subrange(tss);
+		 else 
+				die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
+		 
 		else die ("unsupported assignment: "..tsd.name.." "..tss.name); end	
 	end
 
@@ -386,6 +394,8 @@ function cgen_generate_vhdl_code(tree)
 	-- determine types and ranges of source and destination node.
 		local tsd = node_typesize(node.dst);
 		local tss = node_typesize(node.src);
+
+	--	print(tsd.name);
 
 	-- source node is an expression? - recurse it
 		if(tss.type == EXPRESSION) then
@@ -396,7 +406,6 @@ function cgen_generate_vhdl_code(tree)
 			emitx(";\n");
 		else
 	-- not an expression? - assign the destination with proper type casting.
-		--	print(gen_subrange(tsd));
 			emit(gen_subrange(tsd).." <= "..gen_vhdl_typecvt(tsd, tss)..";");
 		end
 	end
@@ -473,7 +482,7 @@ function cgen_generate_vhdl_code(tree)
 
 	-- 
 	function cgen_vhdl_comment(node)
-	print("COMMENT: "..node.str);
+--	print("COMMENT: "..node.str);
 		emitx("-- "..node.str.."\n");
 	end
 
@@ -608,7 +617,7 @@ function cgen_generate_vhdl_code(tree)
  			["openpin"]				= cgen_vhdl_openpin;
 		};
 
---		print(node);
+	--	print(node);
 
 		for i,v in pairs(node) do
 			-- no type? probably just a block of code. recurse it deeper.

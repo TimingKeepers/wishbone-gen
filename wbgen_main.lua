@@ -138,6 +138,10 @@ foreach_field(calc_field_offset);
 
 foreach_reg({TYPE_FIFO}, gen_code_fifo);
 
+foreach_field(calc_num_fields);
+
+
+
 foreach_reg({TYPE_REG, TYPE_RAM, TYPE_FIFO}, calc_address_sizes);
 
 assign_addresses();

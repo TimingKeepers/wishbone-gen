@@ -74,52 +74,64 @@ function htable_frame(tbl, r,c1,c2)
 end
 
 function htable_emit(tbl)
-	emit("<table cellpadding=0 cellspacing=0 border=0>");
-	for i = 1, tbl.rows do
+   emit("<table cellpadding=0 cellspacing=0 border=0>");
+   for i = 1, tbl.rows do
 
+      if(tbl.data[i].is_header ~= nil) then
+	 tag = "th";
+      else
+	 tag = "td";
+      end
 	
-		
-		if(tbl.data[i].is_header ~= nil) then
-			tag = "th";
-		else
-			tag = "td";
-		end
-	
-	if(tbl.data[i].style ~= nil) then emit('<tr class="'..tbl.data[i].style..'">'); else emit('<tr>'); end
-		for j=1,tbl.cols do
-			local extra = "";
-			
-			
-			if(tbl.data[i][j].extra ~= nil) then extra = tbl.data[i][j].extra; end 
-			if(tbl.data[i][j].colspan ~= nil) then extra = extra..' colspan='..tbl.data[i][j].colspan..' '; end 
-		
-			if(tbl.data[i][j].style ~= nil) then emit('<'..tag..' '..extra..' class="'..tbl.data[i][j].style..'">'); else emit('<'..tag..'>'); end
-			emit(tbl.data[i][j].text);
-			emit('</'..tag..'>');
-		end		
-		emit("</tr>");
-	end
-	emit("</table>");
+      if(tbl.data[i].style ~= nil) then 
+	 emit('<tr class="'..tbl.data[i].style..'">'); 
+      else 
+	 emit('<tr>'); 
+      end
+      
+      for j=1,tbl.cols do
+	 local extra = "";
+	 	 
+	 if(tbl.data[i][j].extra ~= nil) then 
+	    extra = tbl.data[i][j].extra; 
+	 end 
+	 
+	 if(tbl.data[i][j].colspan ~= nil) then 
+	    extra = extra..' colspan='..tbl.data[i][j].colspan..' '; 
+	 end 
+	 
+	 if(tbl.data[i][j].style ~= nil) then 
+	    emit('<'..tag..' '..extra..' class="'..tbl.data[i][j].style..'">'); 
+	 else
+	    emit('<'..tag..' '..extra..'>'); 
+	 end
+
+	 emit(tbl.data[i][j].text);
+	 emit('</'..tag..'>');
+      end		
+      emit("</tr>");
+   end
+   emit("</table>");
 end
 
 function has_any_ports(reg)
-	local has = false;
-	if(reg.ports ~= nil) then return true; end
-	foreach_subfield(reg, function(field) if (field.ports ~= nil) then has = true; end end);
-	return has;
+   local has = false;
+   if(reg.ports ~= nil) then return true; end
+   foreach_subfield(reg, function(field) if (field.ports ~= nil) then has = true; end end);
+   return has;
 end
 
 function htable_add_row(tbl, r)
-	if(r>tbl.rows) then
-		for i=tbl.rows+1,r do
-			tbl.data[i]={}; 
-			for j=1,tbl.cols do 
-				tbl.data[i][j] = {};
-				tbl.data[i][j].text = "";
-			end
-		end
-		tbl.rows=r;
-	end
+   if(r>tbl.rows) then
+      for i=tbl.rows+1,r do
+	 tbl.data[i]={}; 
+	 for j=1,tbl.cols do 
+	    tbl.data[i][j] = {};
+	    tbl.data[i][j].text = "";
+	 end
+      end
+      tbl.rows=r;
+   end
 end
 
 
@@ -189,6 +201,7 @@ function cgen_doc_hdl_symbol()
 
 	foreach_reg(ALL_REG_TYPES, function(reg)
 		if(has_any_ports(reg)) then
+		   dbg("HasAnyPorts: ",reg.name);
 			table.insert(ports, reg.name);
 
 			if(reg.ports ~= nil) then
@@ -339,7 +352,12 @@ function cgen_doc_memmap()
 		
 			row[1].style = "td_code";
 			row[1].text = string.format("0x%x", reg.base);
-			row[2].text = "REG";
+
+			if(reg.doc_is_fiforeg == nil) then
+			   row[2].text = "REG";
+			else
+			   row[2].text = "FIFOREG";
+			end
 
 			row[3].text = hlink("#"..string.upper(reg.c_prefix), reg.name);
 			row[4].style = "td_code";
@@ -389,7 +407,8 @@ function cgen_doc_fieldtable(reg, bitoffs)
 	local td_width = 70;	
 	local tbl;
 	local n= 1;
-	local cellidx = 1;
+
+   
 	
 	tbl= htable_new(2,8);
 	
@@ -403,6 +422,7 @@ function cgen_doc_fieldtable(reg, bitoffs)
 	while (bit >= bitoffs) do
 		local f = find_field_by_offset(reg, bit);
 		
+
 		if(f == nil) then
 			tbl.data[2][n].style = "td_unused";
 			tbl.data[2][n].text = "-";
@@ -417,7 +437,10 @@ function cgen_doc_fieldtable(reg, bitoffs)
 			end
 			local ncells = (bit - fend) + 1;
 			
-			if(ncells > 1) then tbl.data[2][n].colspan = ncells; end
+			dbg("ncells: ",ncells,"bit: ", bit, "name: ",f.prefix);
+
+			tbl.data[2][n].colspan = ncells;
+		
 		
 			local prefix;
 			
@@ -427,16 +450,12 @@ function cgen_doc_fieldtable(reg, bitoffs)
 			tbl.data[2][n].style = "td_field";
 			tbl.data[2][n].text = csel(f.size>1, string.format("%s[%d:%d]", string.upper(prefix), bit-f.offset, fend-f.offset), string.upper(prefix));
 
-			htable_frame(tbl, 2, cellidx);
-			
-		
-			
+			htable_frame(tbl, 2, n);
 			bit = bit - ncells;
-			n=n+ncells;
+			n=n+1;
 		end
 		
-				cellidx = cellidx + 1;
-
+	
 	end
 
 	htable_emit(tbl);

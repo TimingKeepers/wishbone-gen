@@ -30,25 +30,6 @@ package wbgen2_pkg is
       wr_b_i    : in  std_logic);
   end component;
 
-  component wbgen2_fifo_async
-    generic (
-      g_size       : integer;
-      g_width      : integer;
-      g_usedw_size : integer);
-    port (
-      rd_clk_i   : in  std_logic;
-      rd_req_i   : in  std_logic;
-      rd_data_o  : out std_logic_vector(g_width-1 downto 0);
-      rd_empty_o : out std_logic;
-      rd_full_o  : out std_logic;
-      rd_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0);
-      wr_clk_i   : in  std_logic;
-      wr_req_i   : in  std_logic;
-      wr_data_i  : in  std_logic_vector(g_width-1 downto 0);
-      wr_empty_o : out std_logic;
-      wr_full_o  : out std_logic;
-      wr_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0));
-  end component;
   
   component wbgen2_eic
     generic (
@@ -98,6 +79,46 @@ package wbgen2_pkg is
       reg_isr_i        : in  std_logic_vector(g_num_interrupts-1 downto 0);
       reg_isr_wr_stb_i : in  std_logic;
       wb_irq_o         : out std_logic);
+  end component;
+
+  component wbgen2_fifo_async
+    generic (
+      g_size       : integer;
+      g_width      : integer;
+      g_usedw_size : integer);
+    port (
+      rd_clk_i   : in  std_logic;
+      rd_req_i   : in  std_logic;
+      rd_data_o  : out std_logic_vector(g_width-1 downto 0);
+      rd_empty_o : out std_logic;
+      rd_full_o  : out std_logic;
+      rd_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0);
+      wr_clk_i   : in  std_logic;
+      wr_req_i   : in  std_logic;
+      wr_data_i  : in  std_logic_vector(g_width-1 downto 0);
+      wr_empty_o : out std_logic;
+      wr_full_o  : out std_logic;
+      wr_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0));
+  end component;
+
+
+  component wbgen2_fifo_sync
+    generic (
+      g_width      : integer;
+      g_size       : integer;
+      g_usedw_size : integer);
+    port (
+      clk_i      : in  std_logic;
+      wr_data_i  : in  std_logic_vector(g_width-1 downto 0);
+      wr_req_i   : in  std_logic;
+      rd_data_o  : out std_logic_vector(g_width-1 downto 0);
+      rd_req_i   : in  std_logic;
+      wr_empty_o : out std_logic;
+      wr_full_o  : out std_logic;
+      wr_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0);
+      rd_empty_o : out std_logic;
+      rd_full_o  : out std_logic;
+      rd_usedw_o : out std_logic_vector(g_usedw_size -1 downto 0));
   end component;
   
 end wbgen2_pkg;

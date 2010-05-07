@@ -36,7 +36,6 @@ function cgen_c_field_define(field, reg)
 
 	else 
 -- SLV/signed/unsigned fields: emit masks, shifts and access macros
-		print(field.offset, field.size);
 
 		emit(string.format("%-45s %s", "#define "..prefix.."_MASK", "WBGEN2_GEN_MASK("..field.offset..", "..field.size..")"));
 		emit(string.format("%-45s %d", "#define "..prefix.."_SHIFT", field.offset));
@@ -65,6 +64,7 @@ end
 -- iterates all regs and rams and generates appropriate #define-s
 function cgen_c_field_masks()
 	foreach_reg({TYPE_REG}, function(reg)
+				   dbg("DOCREG: ", reg.name, reg.num_fields);
 								if(reg.num_fields ~= nil and reg.num_fields > 0) then
 									emit("");
 									emit("/* definitions for register: "..reg.name.." */");

@@ -2,6 +2,9 @@
 
 -- some constants --
 
+-- DEBUG MACROS
+VERBOSE_DEBUG = 0;
+
 -- bus properties
 DATA_BUS_WIDTH = 32;
 SYNC_CHAIN_LENGTH = 3;
@@ -75,6 +78,10 @@ function ram(x) 				x['__type']=TYPE_RAM;  								return x; end
 function enum(x) 				x['__type']=TYPE_ENUM; 								return x;	end
 function irq(x) 				x['__type']=TYPE_IRQ; 								return x; end
 
+
+function dbg(...)
+	 if(VERBOSE_DEBUG) then print(arg); end
+end
 
 -- function chceks if argument p is nil and if it is, throws fatal error message s
 function chk_nil(p,s)
@@ -190,25 +197,49 @@ end
 function calc_field_offset(field, reg)
 
 -- align the field offset next to the current offset in the reg
-    local ofs = reg.current_offset;
-	
-    ofs = align(field, ofs);
+	 local ofs = reg.current_offset;
 
+-- FIFOs can span multiple I/O registers.
+	 if (reg.__type == TYPE_FIFO) then
 
+			local ofs_new = align(field, ofs);
+
+			if((ofs_new % DATA_BUS_WIDTH) + field.size > DATA_BUS_WIDTH) then 
+				 field.align = DATA_BUS_WIDTH;
+				 ofs = align(field, ofs);
+			else
+				 ofs = ofs_new;
+			end
+
+			reg.current_offset = ofs + field.size;
+			field.offset = ofs;
+
+	 else
+
+			ofs = align(field, ofs);
+	 
 -- update the current offset
-    reg.current_offset = ofs + field.size;
-    field.offset = ofs;
-		field.offset_unaligned = reg.current_offset_unaligned;
-		reg.current_offset_unaligned = reg.current_offset_unaligned + field.size;
+			reg.current_offset = ofs + field.size;
+			field.offset = ofs;
+	 end
 
--- calculate the number of fields in the register
-		if(reg.num_fields == nil) then reg.num_fields = 0; end
-		reg.num_fields = reg.num_fields + 1;
+-- update the "unaligned" offset - for FIFOs
+	 field.offset_unaligned = reg.current_offset_unaligned;
+	 reg.current_offset_unaligned = reg.current_offset_unaligned + field.size;
+		
+		
+
 
 -- oops, we have too many fields (the total size exceeds the data bus width)    
     if( reg.__type == TYPE_REG and reg.current_offset > DATA_BUS_WIDTH ) then
-			die ("Total size of register '"..reg.name.."' ("..reg.current_offset..") exceeds data bus width ("..DATA_BUS_WIDTH..")");
-    end
+			 die ("Total size of register '"..reg.name.."' ("..reg.current_offset..") exceeds data bus width ("..DATA_BUS_WIDTH..")");
+		end
+end
+
+-- calculate the number of fields in the register
+function calc_num_fields(field, reg)
+		if(reg.num_fields == nil) then reg.num_fields = 0; end
+		reg.num_fields = reg.num_fields + 1;
 end
 
 -- commits a suicide with error message "s"
@@ -467,3 +498,20 @@ end
 
 
 
+function deepcopy(object)
+    local lookup_table = {}
+    local function _copy(object)
+        if type(object) ~= "table" then
+            return object
+        elseif lookup_table[object] then
+            return lookup_table[object]
+        end
+        local new_table = {}
+        lookup_table[object] = new_table
+        for index, value in pairs(object) do
+            new_table[_copy(index)] = _copy(value)
+        end
+        return setmetatable(new_table, getmetatable(object))
+    end
+    return _copy(object)
+end

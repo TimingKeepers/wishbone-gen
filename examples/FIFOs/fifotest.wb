@@ -1,0 +1,79 @@
+-- -*- Mode: LUA; tab-width: 2 -*-
+
+peripheral {
+	name ="FIFO test";
+	prefix="ft";
+	hdl_entity="wb_test_fifos";
+	
+	fifo_reg {
+		size = 256;
+		direction = CORE_TO_BUS;
+		prefix = "tsf";
+		name = "Timestamp FIFO";
+		description = "This FIFO holds the TX packet timestamps gathered from all switch endpoints";
+		flags_bus = {FIFO_FULL, FIFO_EMPTY, FIFO_COUNT};
+		flags_dev = {FIFO_FULL, FIFO_EMPTY, FIFO_COUNT};
+		
+		field {
+			name = "Timestamp value taken on rising clock edge (full word)";
+			prefix = "val_r";
+			type = SLV;
+			size = 28;
+		};
+
+		field {
+			name = "Timestamp value taken on falling clock edge (few LSBs)";
+			prefix = "val_f";
+			type = SLV;
+			size = 4;
+		};
+
+
+		field {
+			name ="Physical port ID";
+			prefix = "pid";
+			type = SLV;
+			size = 5;
+			align= 16;
+		};
+
+		
+		field {
+			name = "Frame ID";
+			prefix = "fid";
+			type = SLV;
+			size = 16;
+			align = 16;
+		};
+	};
+
+	fifo_reg {
+		size = 32;
+		direction = BUS_TO_CORE;
+		prefix = "memacc";
+		name = "Memory Access FIFO";
+		flags_bus = {FIFO_FULL, FIFO_EMPTY, FIFO_COUNT};
+		flags_dev = {FIFO_FULL, FIFO_EMPTY, FIFO_COUNT};
+		
+
+		field {
+			name = "Memory address/data select";
+			description = "0: current entry contains memory address value (auto-incremented at each write)\
+										 1: current entry contains data word to be written to memory at previously set address";
+			prefix = "ad_sel";
+			type = BIT;
+		};
+
+		field {
+			name = "Memory address/data value";
+			description = "Value of data word to be written (when ad_sel = 1) or new memory address (when ad_sel = 0)";
+			prefix = "ad";
+			type = SLV;
+			size = 32;
+		};
+
+
+	};
+
+
+};

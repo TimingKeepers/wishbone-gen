@@ -112,8 +112,11 @@ function gen_bus_logic_wishbone()
 	   		padcode
 			}); }; 
 
-		table_join(rwcode, { va(vi("ack_sreg", math.max(acklen-1, 0)), 1); } );
-		table_join(rwcode, { va("ack_in_progress", 1); });
+
+	 if(not (reg.dont_emit_ack_code == true))  then -- we don't want the main generator to mess with ACK line for this register
+			table_join(rwcode, { va(vi("ack_sreg", math.max(acklen-1, 0)), 1); } );
+			table_join(rwcode, { va("ack_in_progress", 1); });
+	 end
 
    	if(regbank_address_bits > 0) then
    		rwcode = { vcase(reg.base, rwcode); }; 
