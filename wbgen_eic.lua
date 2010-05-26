@@ -43,7 +43,7 @@ function wbgen_generate_eic()
 										["ackgen_code"] = { va("eic_idr_write_int", 0); };
 										["reset_code_main"] = { va("eic_idr_write_int", 0); };
 										["acklen"] = 1;
-										["extra_code"] = { va("eic_idr_int", vi("wrdata_reg", periph.irqcount-1, 0)); };
+										["extra_code"] = { va(vi("eic_idr_int", periph.irqcount-1, 0), vi("wrdata_reg", periph.irqcount-1, 0)); };
 										["no_std_regbank"] = true;
 
 									};
@@ -62,7 +62,7 @@ function wbgen_generate_eic()
 										["ackgen_code"] = { va("eic_ier_write_int", 0); };
 										["reset_code_main"] = { va("eic_ier_write_int", 0); };
 										["acklen"] = 1;
-										["extra_code"] = { va("eic_ier_int", vi("wrdata_reg", periph.irqcount-1, 0)); };
+										["extra_code"] = { va(vi("eic_ier_int", periph.irqcount-1, 0), vi("wrdata_reg", periph.irqcount-1, 0)); };
 										["no_std_regbank"] = true;
 									};
 
@@ -78,12 +78,12 @@ function wbgen_generate_eic()
 																		signal (BIT, 0, "eic_isr_write_int"); };
 																		
 										["write_code"] = { va("eic_isr_write_int", 1); };
-										["read_code"] = { va(vi("rddata_reg", periph.irqcount-1, 0), "eic_isr_status_int"); };
+										["read_code"] = { va(vi("rddata_reg", periph.irqcount-1, 0), vi("eic_isr_status_int", periph.irqcount-1, 0)); };
 										
 										["ackgen_code"] = { va("eic_isr_write_int", 0); };
 										["reset_code_main"] = { va("eic_isr_write_int", 0); };
 										["acklen"] = 1;
-										["extra_code"] = { va("eic_isr_clear_int", vi("wrdata_reg", periph.irqcount-1, 0)); };
+										["extra_code"] = { va(vi("eic_isr_clear_int", periph.irqcount-1, 0), vi("wrdata_reg", periph.irqcount-1, 0)); };
 										["no_std_regbank"] = true;
 									};
 
@@ -96,7 +96,7 @@ function wbgen_generate_eic()
 										["hdl_prefix"] = "EIC_IMR";
 										["signals"] = { signal (SLV, periph.irqcount, "eic_imr_int"); };
 																		
-										["read_code"] = { va(vi("rddata_reg", periph.irqcount-1, 0), "eic_imr_int"); };
+										["read_code"] = { va(vi("rddata_reg", periph.irqcount-1, 0), vi("eic_imr_int", periph.irqcount-1, 0)); };
 										
 										["acklen"] = 1;
 										["no_std_regbank"] = true;

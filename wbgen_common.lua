@@ -80,7 +80,7 @@ function irq(x) 				x['__type']=TYPE_IRQ; 								return x; end
 
 
 function dbg(...)
-	 if(VERBOSE_DEBUG) then print(arg); end
+	 if(VERBOSE_DEBUG ~= 0) then print(arg); end
 end
 
 -- function chceks if argument p is nil and if it is, throws fatal error message s

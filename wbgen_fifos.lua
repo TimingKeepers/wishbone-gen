@@ -335,15 +335,17 @@ function gen_code_fifo(fifo)
 
 
 
-	if(fifo.clock == nil) then
+	if(fifo.clock == nil) then -- sync FIFO, single clock
 		 table_join(fifo.maps, { vpm ("clk_i", "bus_clock_int"); });
-	elseif (fifo.directrion == BUS_TO_CORE) then
+	else -- async FIFO, dual clocks
+	  if (fifo.direction == BUS_TO_CORE) then
 		 table_join(fifo.maps, { vpm ("rd_clk_i", fifo.clock);
 									 vpm ("wr_clk_i", "bus_clock_int") });
 														 
-	elseif (fifo.direction == CORE_TO_BUS) then
+	  elseif (fifo.direction == CORE_TO_BUS) then
 		 table_join(fifo.maps, { vpm ("wr_clk_i", fifo.clock);
 									 vpm ("rd_clk_i", "bus_clock_int") });
+    end
 		 
 	end
 
@@ -363,7 +365,7 @@ function gen_code_fifo(fifo)
 
 
 	table_join(fifo.extra_code, {
-								vinstance(fifo.full_prefix.."_INST", "wbgen2_fifo_sync", fifo.maps);
+								vinstance(fifo.full_prefix.."_INST", csel(fifo.clock == nil, "wbgen2_fifo_sync", "wbgen2_fifo_async"), fifo.maps);
 						 });
 
 

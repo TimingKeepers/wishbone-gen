@@ -26,7 +26,7 @@ puts $target_filename
 
 
 
-../../wbgen2 $input_wb_file -vo $target_filename -consto ./output/vlog_constants.v -co ./output/regdefs.h -lang $lang $wbgen_opt
+../../wbgen2 -V $target_filename -K ./output/vlog_constants.v -C ./output/regdefs.h -l $lang $input_wb_file
 
 if { $lang == "verilog" } {
    vlog -work work -work wbgen2 $target_filename
