@@ -233,7 +233,7 @@ function cgen_build_clock_list()
     local i,v;
     local clockports = {};
     
-    remove_duplicates(allclocks);
+    allclocks = remove_duplicates(allclocks);
     
     for i,v in pairs(allclocks) do
     	table.insert(clockports, port(BIT, 0, "in", v, "", true));

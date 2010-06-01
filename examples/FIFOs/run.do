@@ -43,6 +43,6 @@ radix -hexadecimal
 
 do wave.do
 
-run 1000us
+run 10us
 wave zoomfull
 

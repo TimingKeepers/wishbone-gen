@@ -466,14 +466,29 @@ function tree_2_table(entry)
 	 return tab;
 end
 
+
+
 function remove_duplicates(t)
-  local i=1,v,j;
-   
-  while(t[i] ~= nil) do
-		for j=1,i-1 do if(t[j]==t[i]) then table.remove(t, i); i=i-1; end end
-		i=i+1;
+  function count_entries(tab, entry)
+ 	  local i,v,cnt;
+ 	  cnt=0;
+ 	  for i,v in ipairs(tab) do if(v == entry) then cnt = cnt+1; end end
+ 	  return cnt;
+  end
+
+ 
+  local t2={};
+ 
+	for i,v in ipairs(t) do
+	 local cnt = count_entries(t2, v);
+	 if(cnt == 0) then
+		table.insert(t2,v);
+		end 
 	end
+ return t2;
 end
+
+                                                                                                                      
 
 function wbgen_count_subblocks()
   local ramcount = 0;

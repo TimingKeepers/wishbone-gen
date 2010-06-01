@@ -8,6 +8,10 @@ add wave -noupdate -format Literal /main/tsf_val_r
 add wave -noupdate -format Literal /main/tsf_val_f
 add wave -noupdate -format Literal /main/tsf_pid
 add wave -noupdate -format Literal /main/tsf_fid
+add wave -noupdate -format Literal /main/dut/ft_tsf_in_int
+add wave -noupdate -format Literal /main/dut/ft_tsf_out_int
+add wave -noupdate -format Logic /main/dut/ft_tsf_rdreq_int
+add wave -noupdate -format Logic /main/dut/ft_tsf_rdreq_int_d0
 add wave -noupdate -format Logic /main/memacc_rd_req
 add wave -noupdate -format Logic /main/memacc_rd_full
 add wave -noupdate -format Logic /main/memacc_rd_empty
@@ -35,7 +39,7 @@ add wave -noupdate -format Logic /main/WB/wb_we
 add wave -noupdate -format Logic /main/WB/wb_rst
 add wave -noupdate -format Logic /main/WB/wb_clk
 TreeUpdate [SetDefaultTree]
-WaveRestoreCursors {{Cursor 1} {61000000 ps} 0}
+WaveRestoreCursors {{Cursor 1} {637405 ps} 0}
 configure wave -namecolwidth 288
 configure wave -valuecolwidth 100
 configure wave -justifyvalue left
@@ -49,4 +53,4 @@ configure wave -gridperiod 1
 configure wave -griddelta 40
 configure wave -timeline 0
 update
-WaveRestoreZoom {57718750 ps} {64281250 ps}
+WaveRestoreZoom {124709 ps} {1150101 ps}

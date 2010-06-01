@@ -124,9 +124,9 @@ module main;
 
 
 	 
-	 tsf_wr_req = 1;
+	 tsf_wr_req <= 1;
 	 @(posedge clk);
-	 tsf_wr_req = 0;
+	 tsf_wr_req <= 0;
 
       end   
    endtask // ts_fifo_write
@@ -167,13 +167,13 @@ module main;
       WB.monitor_bus(0);
       WB.verbose(0);
    
-      for(i=0;i<100;i=i+1) memacc_write(i, 3*i);
+      for(i=0;i<10;i=i+1) memacc_write(i, 3*i);
 
 
       
-      for(i=0;i<300;i=i+1) begin
-	 ts_fifo_read(rd_val_r, rd_val_f, rd_pid, rd_fid);
-	 $display("TS FIFO READ: val_f %d val_r %d pid %d fid %d", rd_val_f, rd_val_r, rd_pid, rd_fid);
+      for(i=0;i<5;i=i+1) begin
+//	 ts_fifo_read(rd_val_r, rd_val_f, rd_pid, rd_fid);
+//	 $display("TS FIFO READ: val_f %d val_r %d pid %d fid %d", rd_val_f, rd_val_r, rd_pid, rd_fid);
 	 
       end
 	
@@ -211,8 +211,8 @@ module main;
    initial begin
       wait(WB.ready);
 
-      for(j=0;j<300;j=j+1)
-	ts_fifo_write(j, j+10, j+20, j+30);
+  //    for(j=0;j<5;j=j+1)
+//	ts_fifo_write(j, j+10, j+20, j+30);
       
    end
    
