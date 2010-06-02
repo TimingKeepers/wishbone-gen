@@ -350,6 +350,13 @@ function cgen_gen_vlog_constants(filename)
 	 
 	  foreach_reg({TYPE_REG}, function(reg) 
 				file.write(file, string.format("`define %-30s %d'h%x\n", "ADDR_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) * reg.base));
+				
+				foreach_subfield(reg, function(field)
+					if(field.c_prefix ~= nil) then
+						file.write(file, string.format("`define %s_%s_%s_OFFSET %d\n", string.upper(periph.c_prefix), string.upper(reg.c_prefix), string.upper(field.c_prefix), field.offset));
+ 						file.write(file, string.format("`define %s_%s_%s 32'h%08x\n", string.upper(periph.c_prefix), string.upper(reg.c_prefix), string.upper(field.c_prefix), (math.pow(2,field.size)-1) * math.pow(2, field.offset)  ));
+					end
+				end);				
 			end);
 		
 		
@@ -359,6 +366,8 @@ function cgen_gen_vlog_constants(filename)
 				file.write(file, string.format("`define %-30s %d'h%x\n", "BASE_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) *base));
 				file.write(file, string.format("`define %-30s 32'h%x\n", "SIZE_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), reg.size));
 		end);
+
+
 
 	io.close(file);
 end
