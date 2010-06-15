@@ -25,6 +25,7 @@ options.reset_type = "asynchronous";
 options.target_interconnect = "wb-classic";
 options.register_data_output = false;
 options.lang = "vhdl";
+options.c_reg_style = "struct";
 
 require "alt_getopt"
 
@@ -32,14 +33,16 @@ local usage_string = [[slave Wishbone generator
   wbgen2 [options] input_file.wb]]
 
 local commands_string = [[options:
-  -C, --co=FILE		Write the slave's generated C header file to FILE
-  -D, --doco=FILE	Write the slave's generated HTML documentation to FILE
-  -h, --help		  Show this help text
-  -l, --lang=LANG	Set the output Hardware Description Language (HDL) to LANG
-			  Valid values for LANG: {vhdl,verilog}
-  -K, --constco=FILE	Populate FILE with Verilog output (mainly constants)
-  -v, --version		Show version information
-  -V, --vo=FILE		Write the slave's generated HDL code to FILE
+  -C, --co=FILE           Write the slave's generated C header file to FILE
+  -D, --doco=FILE         Write the slave's generated HTML documentation to FILE
+  -h, --help              Show this help text
+  -l, --lang=LANG         Set the output Hardware Description Language (HDL) to LANG
+                          Valid values for LANG: {vhdl,verilog}
+  -s, --cstyle=STYLE      Set the style of register bank in generated C headers
+                          Valid values for STYLE: {struct, defines}
+  -K, --constco=FILE      Populate FILE with Verilog output (mainly constants)
+  -v, --version           Show version information
+  -V, --vo=FILE           Write the slave's generated HDL code to FILE
 
 wbgen2 (c) Tomasz Wlostowski/CERN BE-CO-HT 2010]]
 
@@ -55,18 +58,19 @@ end
 
 function parse_args(arg)
 	local long_opts = {
-		help		= "h",
-		version		= "v",
-		co		= "C",
-		doco		= "D",
-		constco		= "K",
-		lang		= "l",
-		vo		= "V",
+	   help		= "h",
+	   version	= "v",
+	   co		= "C",
+	   doco		= "D",
+	   constco	= "K",
+	   lang		= "l",
+	   vo		= "V",
+	   cstyle       = "s"
 	}
 	local optarg
 	local optind
 
-	optarg,optind = alt_getopt.get_opts (arg, "hvC:D:K:l:V:", long_opts)
+	optarg,optind = alt_getopt.get_opts (arg, "hvC:D:K:l:V:s:", long_opts)
 	for key,value in pairs (optarg) do
 		if key == "h" then
 			usage_complete()
@@ -90,6 +94,12 @@ function parse_args(arg)
 			if (options.lang ~= "vhdl" and options.lang ~= "verilog") then
 				die("Unknown HDL: "..options.lang);
 			end
+
+		elseif key == "s" then
+		   options.c_reg_style = value;
+		   if (options.c_reg_style ~= "struct" and options.c_reg_style ~= "defines") then
+		      die("Unknown C RegBank style: "..options.c_reg_style);
+		   end
 
 		elseif key == "V" then
 			options.output_hdl_file = value

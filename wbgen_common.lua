@@ -49,6 +49,7 @@ PASS_THROUGH = 0x40;
 INTEGER = 0x80;
 EXPRESSION = 0x100;
 UNDEFINED = 0x200;
+CONSTANT = 0x400;
 
 -- reg LOAD types
 LOAD_INT = 1;
@@ -308,6 +309,7 @@ function fix_access(field, reg)
 	default_access(field, MONOSTABLE, WRITE_ONLY, READ_ONLY);
 	default_access(field, ENUM, READ_WRITE, READ_ONLY);
 	default_access(field, PASS_THROUGH, WRITE_ONLY, READ_ONLY);
+	default_access(field, CONSTANT, READ_ONLY, WRITE_ONLY);
 		
 	if(field.access ~= nil) then
 	    return;

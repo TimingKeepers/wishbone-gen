@@ -622,6 +622,18 @@ function gen_hdl_code_passthrough(field, reg)
 
 end
 
+function gen_hdl_code_constant(field, reg)
+	local prefix = gen_hdl_field_prefix(field, reg); 
+
+  if(field.value == nil) then
+ 		die("No value defined for CONSTANT field '"..field.name.."'.");
+	end
+	
+	field.ports =		{};
+	field.acklen = 1;
+	field.read_code = 			{ va(vir("rddata_reg", field), field.value ); };
+end
+
 -- generates code which loads data unused bits of data output register with Xs 
 function fill_unused_bits(target, reg)
 	local t={};
@@ -629,7 +641,7 @@ function fill_unused_bits(target, reg)
 	local all_wo = true;
 
 	foreach_subfield(reg, function(field, reg)
-													if(field.type == SLV or field.type == SIGNED or field.type == UNSIGNED) then
+													if(field.type == SLV or field.type == SIGNED or field.type == UNSIGNED or field.type == CONSTANT) then
 														for i=field.offset, (field.offset+field.size-1) do t[i] = 1; end
 													elseif(field.type == BIT or field.type == MONOSTABLE)  then
 														t[field.offset] = 1;
@@ -666,7 +678,10 @@ function gen_hdl_code_reg_field(field, reg)
     gen_hdl_code_slv(field, reg);
 	elseif(field.type == PASS_THROUGH) then
 		gen_hdl_code_passthrough(field, reg);
+	elseif(field.type == CONSTANT) then
+		gen_hdl_code_constant(field, reg);
 	end
+
 end
 
 -- generates VHDL for single register
