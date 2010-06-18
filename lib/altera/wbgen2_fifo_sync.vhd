@@ -55,9 +55,9 @@ architecture rtl of wbgen2_fifo_sync is
       rdreq : in  std_logic;
       empty : out std_logic;
       clock : in  std_logic;
-      q     : out std_logic_vector (12 downto 0);
+      q     : out std_logic_vector (g_width-1 downto 0);
       wrreq : in  std_logic;
-      data  : in  std_logic_vector (12 downto 0);
+      data  : in  std_logic_vector (g_width-1 downto 0);
       full  : out std_logic
       );
   end component;

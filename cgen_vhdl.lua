@@ -19,6 +19,10 @@ fieldtype_2_vhdl[SLV] = "std_logic_vector";
 
 -- generates a string containing VHDL-compatible numeric constant of value [value] and size [numbits]
 function gen_vhdl_bin_literal(value, numbits)
+ if(numbits == 1) then
+	 return string.format("'%d'", csel(value==0,0,1));
+ end
+
     local str ='\"';
     local i,n,d,r;
     
@@ -352,7 +356,8 @@ function cgen_generate_vhdl_code(tree)
 			if(tsd.type == BIT) then 
 				return("'"..tss.name.."'");
 			elseif(tsd.type == SLV) then
-				return("std_logic_vector(to_unsigned("..tss.name..", "..calc_size(tsd).."))");
+--				return("std_logic_vector(to_unsigned("..tss.name..", "..calc_size(tsd).."))");
+					return gen_vhdl_bin_literal(tss.name, calc_size(tsd));
 			elseif(tsd.type == SIGNED) then
 				return("to_signed("..tss.name..", "..calc_size(tsd)..")");
 			elseif(tsd.type == UNSIGNED) then
