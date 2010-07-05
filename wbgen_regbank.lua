@@ -361,7 +361,7 @@ function gen_hdl_code_slv(field, reg)
 		    field.acklen = 					1;
 		    
 		    field.read_code = 			{ va(vir("rddata_reg", field), prefix.."_i"); };
-		    field.write_code = 			{ va(prefix.."_load_o", 0); };
+		    field.write_code = 			{ va(prefix.."_load_o", 1); };
 		    field.extra_code =			{ va(prefix.."_o", vir("wrdata_reg", field)); };
 		    field.ackgen_code_pre = { va(prefix.."_load_o", 0);};
 		    field.ackgen_code = 		{ va(prefix.."_load_o", 0); };
