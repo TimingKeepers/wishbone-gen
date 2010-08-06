@@ -680,7 +680,19 @@ function gen_hdl_code_reg_field(field, reg)
 		gen_hdl_code_passthrough(field, reg);
 	elseif(field.type == CONSTANT) then
 		gen_hdl_code_constant(field, reg);
-	end
+ end
+
+ if(field.ack_read ~= nil) then 
+		table_join(field.ports, { port (BIT, 0, "out", field.ack_read) });
+		table_join(field.read_code, { va(field.ack_read, 1) });
+
+		if(field.reset_code_main == nil) then field.reset_code_main = {}; end
+		table_join(field.reset_code_main, { va(field.ack_read,  0) });
+
+		if(field.ackgen_code == nil) then field.ackgen_code= {}; end
+		table_join(field.ackgen_code, { va(field.ack_read, 0) });
+ end
+
 
 end
 

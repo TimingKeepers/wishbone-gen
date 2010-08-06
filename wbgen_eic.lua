@@ -75,6 +75,7 @@ function wbgen_generate_eic()
 										["hdl_prefix"] = "EIC_ISR";
 										["signals"] = { signal (SLV, periph.irqcount, "eic_isr_clear_int");
 																		signal (SLV, periph.irqcount, "eic_isr_status_int");
+																		signal (SLV, periph.irqcount, "eic_irq_ack_int");
 																		signal (BIT, 0, "eic_isr_write_int"); };
 																		
 										["write_code"] = { va("eic_isr_write_int", 1); };
@@ -126,6 +127,7 @@ function wbgen_generate_eic()
 			["access_dev"] = READ_WRITE;
 		};
 
+
 		local field_ier = {
 			["__blockindex"] = irq.index;			
 			["__type"] = TYPE_FIELD;
@@ -168,13 +170,24 @@ function wbgen_generate_eic()
 
 
 	
+		
+		irq.full_prefix = string.lower("irq_"..irq.hdl_prefix);
+		irq.ports = { port(BIT, 0, "in", irq.full_prefix.."_i"); };
+
+		if(irq.ack_line == true) then
+			 table_join(irq.ports, { port(BIT, 0, "out", irq.full_prefix.."_ack_o"); });
+		end
+
+		if(irq.mask_line == true) then
+			 table_join(irq.ports, { port(BIT, 0, "out", irq.full_prefix.."_mask_o"); });
+		end
+
 		table.insert(reg_idr, field_idr);
 		table.insert(reg_isr, field_isr);
 		table.insert(reg_imr, field_imr);
 		table.insert(reg_ier, field_ier);
+
 		
-		irq.full_prefix = string.lower("irq_"..irq.hdl_prefix);
-		irq.ports = { port(BIT, 0, "in", irq.full_prefix.."_i"); };
 	end);
 
 
@@ -193,6 +206,7 @@ function wbgen_generate_eic()
 									vpm("clk_i", 							"bus_clock_int");
 									vpm("rst_n_i", 						"rst_n_i");
 									vpm("irq_i", 							"irq_inputs_vector_int");
+									vpm("irq_ack_o", 					"eic_irq_ack_int");
 									vpm("reg_imr_o",					"eic_imr_int");
 									vpm("reg_ier_i",					"eic_ier_int");
 									vpm("reg_ier_wr_stb_i",		"eic_ier_write_int");
@@ -220,9 +234,19 @@ function wbgen_generate_eic()
 	
 	local irq_unit_code = { vinstance("eic_irq_controller_inst", "wbgen2_eic", maps	); };
 	
-	foreach_reg({TYPE_IRQ}, function(irq)
-														table_join(irq_unit_code, {va(vi("irq_inputs_vector_int", irq.index), irq.full_prefix.."_i")});
-													end);
+	foreach_reg({TYPE_IRQ}, 
+							function(irq)
+								 table_join(irq_unit_code, {va(vi("irq_inputs_vector_int", irq.index), irq.full_prefix.."_i")});
+								 
+								 if(irq.ack_line == true) then
+										table_join(irq_unit_code, {va(irq.full_prefix.."_ack_o", vi("eic_irq_ack_int", irq.index))});
+								 end
+
+								 if(irq.mask_line == true) then
+										table_join(irq_unit_code, {va(irq.full_prefix.."_mask_o", vi("eic_imr_int", irq.index))});
+								 end
+
+							end);
 	
 	local fake_irq = {
 			["__type"] = TYPE_IRQ;

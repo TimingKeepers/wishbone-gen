@@ -70,6 +70,7 @@ package wbgen2_pkg is
       rst_n_i          : in  std_logic;
       clk_i            : in  std_logic;
       irq_i            : in  std_logic_vector(g_num_interrupts-1 downto 0);
+      irq_ack_o        : out std_logic_vector(g_num_interrupts-1 downto 0);
       reg_imr_o        : out std_logic_vector(g_num_interrupts-1 downto 0);
       reg_ier_i        : in  std_logic_vector(g_num_interrupts-1 downto 0);
       reg_ier_wr_stb_i : in  std_logic;

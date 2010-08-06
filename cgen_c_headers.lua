@@ -197,7 +197,7 @@ function cgen_generate_c_header_code()
    cgen_c_fileheader();
    cgen_c_field_masks();
    
-   if(options.c_regs_style == "struct") then
+   if(options.c_reg_style == "struct") then
       cgen_c_struct();
    else
       cgen_c_defines();

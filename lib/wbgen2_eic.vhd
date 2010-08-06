@@ -48,8 +48,12 @@ entity wbgen2_eic is
     rst_n_i : in std_logic;             -- reset & system clock, as always :)
     clk_i   : in std_logic;
 
-    irq_i : in std_logic_vector(g_num_interrupts-1 downto 0);  -- raw interrupt
-                                                               -- inputs
+    -- raw interrupt inputs
+    irq_i : in std_logic_vector(g_num_interrupts-1 downto 0);  
+
+    -- interrupt acknowledge signal, used for level-active interrupts to
+    -- indicate that the interrupt has been handled
+    irq_ack_o: out std_logic_vector(g_num_interrupts-1 downto 0);  
 
 -- interrupt mask regsiter (slv/bus read-only)
     reg_imr_o : out std_logic_vector(g_num_interrupts-1 downto 0);
@@ -149,7 +153,12 @@ begin  -- syn
 
         if((reg_isr_i(i) = '1' and reg_isr_wr_stb_i = '1') or irq_mask(i) = '0') then
           irq_pending(i) <= '0';
+          irq_i_d0(i) <= '0';
+          irq_i_d1(i) <= '0';
+          irq_i_d2(i) <= '0';
+        
         else
+          
           case irq_mode(i) is
             when c_IRQ_MODE_LEVEL_0      => irq_pending(i) <= not irq_i_d2(i);
             when c_IRQ_MODE_LEVEL_1      => irq_pending(i) <= irq_i_d2(i);
@@ -193,6 +202,10 @@ begin  -- syn
       
     end if;
   end process;
+
+  gen_irq_ack: for i in 0 to g_num_interrupts-1 generate
+    irq_ack_o(i) <= '1' when (reg_isr_wr_stb_i = '1' and reg_isr_i(i) = '1') else '0';
+  end generate gen_irq_ack;
 
   reg_imr_o <= irq_mask;
   reg_isr_o <= irq_pending;
