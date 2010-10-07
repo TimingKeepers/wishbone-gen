@@ -2596,8 +2596,8 @@ t.ackgen_code_pre={va(e.."_lw",e.."_lw_delay");
 va(e.."_lw_delay",0);
 vif(vand(vequal(vi("ack_sreg",1),1),vequal(e.."_lw_read_in_progress",1)),{
 va(vir("rddata_reg",t),e.."_int_read");
-});
 va(e.."_lw_read_in_progress",0);
+});
 };
 t.extra_code={vcomment("asynchronous "..fieldtype_2_vhdl[t.type].." register : "..t.name.." (type RW/WO, "..t.clock.." <-> bus_clock_int)");
 vsyncprocess(t.clock,"rst_n_i",{

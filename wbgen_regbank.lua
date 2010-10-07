@@ -522,8 +522,8 @@ function gen_hdl_code_slv(field, reg)
 																			va(prefix.."_lw_delay", 0);
 																			vif (vand(vequal(vi("ack_sreg", 1), 1), vequal(prefix.."_lw_read_in_progress", 1)), {
 																				va(vir("rddata_reg", field), prefix.."_int_read");
+																				va(prefix.."_lw_read_in_progress", 0);
 																			});
-																			va(prefix.."_lw_read_in_progress", 0);
 																			};
 
 			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RW/WO, "..field.clock.." <-> bus_clock_int)");
