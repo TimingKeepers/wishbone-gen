@@ -692,8 +692,6 @@ function gen_hdl_code_reg_field(field, reg)
 		if(field.ackgen_code == nil) then field.ackgen_code= {}; end
 		table_join(field.ackgen_code, { va(field.ack_read, 0) });
  end
-
-
 end
 
 -- generates VHDL for single register

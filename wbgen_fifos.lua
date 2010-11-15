@@ -228,6 +228,10 @@ function fifo_wire_bus_ports(fifo)
 	 };
 
 	 function gen_fifo_csr_field(flag, field_prefix, field_name, field_desc, size, type, offset)
+			if(fifo.flags_bus == nil) then
+				return;
+			end
+			
 			if inset(flag, fifo.flags_bus) then
 				 local f = { 
 						["__type"]      = TYPE_FIELD;

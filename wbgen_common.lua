@@ -150,8 +150,12 @@ function calc_size(field, reg)
 end
 
 -- iterates for all registers which type is in "accecepted_types", executing function "func" for each register
-function foreach_reg(accepted_types, func)
-	for i,v in ipairs(periph) do
+function foreach_reg(accepted_types, func, p)
+	if(p == nil) then 
+		p = periph;
+	end
+	
+	for i,v in ipairs(p) do
 	  if(type(v) == 'table') then
 	  	if(v.__type ~= nil and (match(v.__type, accepted_types))) then
 			  func(v);
