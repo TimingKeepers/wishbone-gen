@@ -26,6 +26,7 @@ options.target_interconnect = "wb-classic";
 options.register_data_output = false;
 options.lang = "vhdl";
 options.c_reg_style = "struct";
+options.hdl_reg_style = "signals";
 
 require "alt_getopt"
 
@@ -40,9 +41,13 @@ local commands_string = [[options:
                           Valid values for LANG: {vhdl,verilog}
   -s, --cstyle=STYLE      Set the style of register bank in generated C headers
                           Valid values for STYLE: {struct, defines}
+  -H, --hstyle=STYLE      Set the style of register signals in generated VHDL/Verilog file
+                          Valid values for STYLE: {signals, record}
   -K, --constco=FILE      Populate FILE with Verilog output (mainly constants)
   -v, --version           Show version information
   -V, --vo=FILE           Write the slave's generated HDL code to FILE
+  -p, --vpo=FILE          Generate a VHDL package for slave's generated VHDL
+                          (necessary with --hstyle=record)
 
 wbgen2 (c) Tomasz Wlostowski/CERN BE-CO-HT 2010]]
 
@@ -65,12 +70,15 @@ function parse_args(arg)
 	   constco	= "K",
 	   lang		= "l",
 	   vo		= "V",
-	   cstyle       = "s"
+           vpo          = "p",
+	   cstyle       = "s",
+           hstyle       = "H"
 	}
+
 	local optarg
 	local optind
 
-	optarg,optind = alt_getopt.get_opts (arg, "hvC:D:K:l:V:s:", long_opts)
+	optarg,optind = alt_getopt.get_opts (arg, "hvC:D:K:l:V:s:H:p:", long_opts)
 	for key,value in pairs (optarg) do
 		if key == "h" then
 			usage_complete()
@@ -103,7 +111,15 @@ function parse_args(arg)
 
 		elseif key == "V" then
 			options.output_hdl_file = value
-		end
+		elseif key == "p" then
+                   options.output_package_file = value
+                elseif key == "H" then
+			if (value ~= "signals" and value ~= "record") then
+				die("Unknown register style: "..value);
+			end
+                        options.hdl_reg_style = value
+                     end
+
 	end
 
 	if(arg[optind] == nil) then
@@ -161,14 +177,11 @@ tree=gen_bus_logic_wishbone();
 cgen_build_signals_ports();
 
 if(options.output_hdl_file ~= nil) then
-	cgen_generate_init(options.output_hdl_file)
-	if (options.lang == "vhdl") then
-		cgen_generate_vhdl_code(tree);
-	elseif (options.lang == "verilog") then
-		cgen_generate_verilog_code(tree);
-	end
-	
-	cgen_generate_done();
+   if (options.lang == "vhdl") then
+      cgen_generate_vhdl_code(tree);
+   elseif (options.lang == "verilog") then
+      --		cgen_generate_verilog_code(tree);
+   end
 end
 
 if(options.output_c_header_file ~= nil) then

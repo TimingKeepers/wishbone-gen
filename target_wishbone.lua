@@ -5,26 +5,26 @@ MAX_ACK_LENGTH = 10;
 
 function gen_wishbone_ports()
   local ports = {
-		port(BIT, 0, "in", "rst_n_i", "", true),
-		port(BIT, 0, "in", "wb_clk_i", "", true),
+		port(BIT, 0, "in", "rst_n_i", "", VPORT_WB),
+		port(BIT, 0, "in", "wb_clk_i", "", VPORT_WB),
 	};
 	
   if(address_bus_width > 0 ) then
-		table_join(ports, { port(SLV, address_bus_width, "in", "wb_addr_i", "", true) });
+		table_join(ports, { port(SLV, address_bus_width, "in", "wb_addr_i", "", VPORT_WB) });
   end
 
   table_join(ports, {
-										port(SLV, DATA_BUS_WIDTH, "in", "wb_data_i", "", true),
-										port(SLV, DATA_BUS_WIDTH, "out", "wb_data_o", "", true),
-										port(BIT, 0, "in", "wb_cyc_i", "", true),
-										port(SLV, math.floor((DATA_BUS_WIDTH+7)/8), "in", "wb_sel_i", "", true),
-										port(BIT, 0, "in", "wb_stb_i", "", true),
-										port(BIT, 0, "in", "wb_we_i", "", true),
-										port(BIT, 0, "out", "wb_ack_o", "", true)
+										port(SLV, DATA_BUS_WIDTH, "in", "wb_data_i", "", VPORT_WB),
+										port(SLV, DATA_BUS_WIDTH, "out", "wb_data_o", "", VPORT_WB),
+										port(BIT, 0, "in", "wb_cyc_i", "", VPORT_WB),
+										port(SLV, math.floor((DATA_BUS_WIDTH+7)/8), "in", "wb_sel_i", "", VPORT_WB),
+										port(BIT, 0, "in", "wb_stb_i", "", VPORT_WB),
+										port(BIT, 0, "in", "wb_we_i", "", VPORT_WB),
+										port(BIT, 0, "out", "wb_ack_o", "", VPORT_WB)
    									});
 
 	if(periph.irqcount > 0) then
-		table_join(ports, { port(BIT, 0, "out" ,"wb_irq_o", "", true); });
+		table_join(ports, { port(BIT, 0, "out" ,"wb_irq_o", "", VPORT_WB); });
 	end
 
     

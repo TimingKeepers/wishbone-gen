@@ -42,7 +42,7 @@ function gen_hdl_code_monostable(field, reg)
 		field.signals = 	{	signal(BIT, 0, prefix.."_dly0"),
 												signal(BIT, 0, prefix.."_int") };
 					
-		field.ports =		{	port(BIT, 0, "out", prefix.."_o", "Port for MONOSTABLE field: '"..field.name.."' in reg: '"..reg.name.."'" ) };
+		field.ports =		{	port(BIT, 0, "out", prefix.."_o", "Port for MONOSTABLE field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG ) };
 		field.acklen = 3;
 
 		field.extra_code = vsyncprocess("bus_clock_int", "rst_n_i", {
@@ -69,7 +69,9 @@ function gen_hdl_code_monostable(field, reg)
 																signal(BIT, 0, prefix.."_sync1"),
 																signal(BIT, 0, prefix.."_sync2") };
 					
-	  field.ports = 						{	port(BIT, 0, "out", prefix.."_o", "Port for asynchronous (clock: "..field.clock..") MONOSTABLE field: '"..field.name.."' in reg: '"..reg.name.."'") };
+	  field.ports = 						{	port(BIT, 0, "out", prefix.."_o", 
+                                     "Port for asynchronous (clock: "..field.clock..") MONOSTABLE field: '"..field.name.."' in reg: '"..reg.name.."'", 
+                                     VPORT_REG ) };
 
 	  field.acklen = 						5;
 	   
@@ -115,7 +117,7 @@ function gen_hdl_code_bit(field, reg)
   if(field.clock == nil) then
     if(field.access == ACC_RW_RO) then
 -- bus(read-write), dev(read-only) bitfield
-			field.ports =						{ port(BIT, 0, "out", prefix.."_o", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'" ) };
+			field.ports =						{ port(BIT, 0, "out", prefix.."_o", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG ) };
 			field.signals = 				{ signal(BIT, 0, prefix.."_int") };
 			field.acklen = 					1;
 			
@@ -126,7 +128,7 @@ function gen_hdl_code_bit(field, reg)
 
 	  elseif (field.access == ACC_RO_WO) then
 -- bus(read-only), dev(read-only) bitfield
-	   	field.ports =						{ port(BIT, 0, "in", prefix.."_i", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'") };
+	   	field.ports =						{ port(BIT, 0, "in", prefix.."_i", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG) };
 			field.signals = 				{  };
 			field.acklen = 					1;
 			field.write_code =			{  };
@@ -143,9 +145,9 @@ function gen_hdl_code_bit(field, reg)
 			if(field.load == LOAD_EXT) then
 
 -- external load type (e.g. the register itself is placed outside the WB slave, which only outputs new value and asserts the "load" signal for single clock cycle upon bus write.
-		    field.ports =						{	port(BIT, 0, "out", prefix.."_o", "Ports for BIT field: '"..field.name.."' in reg: '"..reg.name.."'"),
-							  									port(BIT, 0, "in", prefix.."_i"),	    
-																	port(BIT, 0, "out", prefix.."_load_o") };	    
+		    field.ports =						{	port(BIT, 0, "out", prefix.."_o", "Ports for BIT field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG),
+							  									port(BIT, 0, "in", prefix.."_i", nil, VPORT_REG),	    
+																	port(BIT, 0, "out", prefix.."_load_o", nil, VPORT_REG) };	    
 	
 		    field.acklen =			 		1;
 		    
@@ -165,7 +167,7 @@ function gen_hdl_code_bit(field, reg)
 
     if(field.access == ACC_RW_RO) then
 -- bus(read-write), dev(read-only) bitfield, asynchronous
-			field.ports =						{ port(BIT, 0, "out", prefix.."_o", "Port for asynchronous (clock: "..field.clock..") BIT field: '"..field.name.."' in reg: '"..reg.name.."'") };
+			field.ports =						{ port(BIT, 0, "out", prefix.."_o", "Port for asynchronous (clock: "..field.clock..") BIT field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG) };
 			field.signals = 				{ signal(BIT, 0, prefix.."_int"),
 												  			signal(BIT, 0, prefix.."_sync0"),
 												  			signal(BIT, 0, prefix.."_sync1") };
@@ -194,7 +196,7 @@ function gen_hdl_code_bit(field, reg)
 		elseif (field.access == ACC_RO_WO) then
 -- bus(read-only), dev(write-only) bitfield, asynchronous
 
-		field.ports =							{ port(BIT, 0, "in", prefix.."_i", "Port for asynchronous (clock: "..field.clock..") BIT field: '"..field.name.."' in reg: '"..reg.name.."'") };
+		field.ports =							{ port(BIT, 0, "in", prefix.."_i", "Port for asynchronous (clock: "..field.clock..") BIT field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG) };
 		field.signals = 					{ signal(BIT, 0, prefix.."_sync0"),
 															  signal(BIT, 0, prefix.."_sync1") };
 					
@@ -227,9 +229,9 @@ function gen_hdl_code_bit(field, reg)
 
 			local comment = "Ports for asynchronous (clock: "..field.clock..") RW/RW BIT field: '"..field.name.."' in reg: '"..reg.name.."'";
 
-   		field.ports =									{	port(BIT, 0, "out", prefix.."_o", comment),
-																			port(BIT, 0, "in", 	prefix.."_i"),
-																			port(BIT, 0, "out", prefix.."_load_o") };  
+   		field.ports =									{	port(BIT, 0, "out", prefix.."_o", comment, VPORT_REG),
+																			port(BIT, 0, "in", 	prefix.."_i", nil, VPORT_REG),
+																			port(BIT, 0, "out", prefix.."_load_o", nil, VPORT_REG) };  
 
 
 			field.signals = 							{ signal(BIT, 0, prefix.."_int_read"),
@@ -330,7 +332,7 @@ function gen_hdl_code_slv(field, reg)
   
 	  if(field.access == ACC_RW_RO) then
 -- bus(read-write), dev(read-only) slv
-			field.ports =						{ port(field.type, field.size, "out", prefix.."_o", "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'") };
+			field.ports =						{ port(field.type, field.size, "out", prefix.."_o", "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG) };
 			field.signals = 				{ signal(SLV, field.size, prefix.."_int") };
 			field.acklen = 					1;
 			field.write_code =			{ va(prefix.."_int", vir("wrdata_reg", field)); };
@@ -340,7 +342,7 @@ function gen_hdl_code_slv(field, reg)
 		
     elseif (field.access == ACC_RO_WO) then
 -- bus(read-only), dev(write-only) slv
-			field.ports =						{ port(field.type, field.size, "in", prefix.."_i",  "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'") };
+			field.ports =						{ port(field.type, field.size, "in", prefix.."_i",  "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG) };
 			field.signals = 				{  };
 			field.acklen = 					1;
 			field.write_code =			{  };
@@ -354,9 +356,9 @@ function gen_hdl_code_slv(field, reg)
 		    die("Only external load is supported for RW/RW slv/signed/unsigned fields");
 			end
 
-		    field.ports =						{	port(field.type, field.size, "out", prefix.."_o",  "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'"),
-										    					port(field.type, field.size, "in", prefix.."_i"),	    
-																	port(BIT, 0, "out", prefix.."_load_o") };	    
+		    field.ports =						{	port(field.type, field.size, "out", prefix.."_o",  "Port for "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG),
+										    					port(field.type, field.size, "in", prefix.."_i", nil, VPORT_REG),	    
+																	port(BIT, 0, "out", prefix.."_load_o", nil, VPORT_REG) };	    
 	
 		    field.acklen = 					1;
 		    
@@ -374,7 +376,7 @@ function gen_hdl_code_slv(field, reg)
 -- bus(read-write), dev(read-only) slv/signed/unsigned
 			local comment = "Port for asynchronous (clock: "..field.clock..") "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'";
 
-			field.ports =									{ port(field.type, field.size, "out", prefix.."_o", comment) };
+			field.ports =									{ port(field.type, field.size, "out", prefix.."_o", comment, VPORT_REG) };
 
 			field.signals = 							{ signal(SLV, field.size, prefix.."_int"),
 																			signal(BIT, 0, prefix.."_swb"),
@@ -422,7 +424,7 @@ function gen_hdl_code_slv(field, reg)
 -- bus(read-write), dev(read-only) slv
 			local comment = "Port for asynchronous (clock: "..field.clock..") "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'";
 	
-			field.ports =									{ port(field.type, field.size, "in", prefix.."_i", comment) };
+			field.ports =									{ port(field.type, field.size, "in", prefix.."_i", comment, VPORT_REG) };
 
 			field.signals = 							{ signal(SLV, field.size, prefix.."_int"),
 																			signal(BIT, 0, prefix.."_lwb"),
@@ -480,9 +482,9 @@ function gen_hdl_code_slv(field, reg)
 
 			local comment = "Ports for asynchronous (clock: "..field.clock..") "..fieldtype_2_vhdl[field.type].." field: '"..field.name.."' in reg: '"..reg.name.."'";
 
-   		field.ports =									{	port(field.type, field.size, "out", prefix.."_o", comment),
-																			port(field.type, field.size, "in", prefix.."_i"),
-																			port(BIT, 0, "out", prefix.."_load_o") };  
+   		field.ports =									{	port(field.type, field.size, "out", prefix.."_o", comment, VPORT_REG),
+																			port(field.type, field.size, "in", prefix.."_i", nil, VPORT_REG),
+																			port(BIT, 0, "out", prefix.."_load_o", nil, VPORT_REG) };  
 
 
 			field.signals = 							{ signal(SLV, field.size, prefix.."_int_read"),
@@ -566,8 +568,8 @@ function gen_hdl_code_passthrough(field, reg)
 
 			local comment = "Ports for PASS_THROUGH field: '"..field.name.."' in reg: '"..reg.name.."'";
 
-   		field.ports =									{	port(SLV, field.size, "out", prefix.."_o", comment),
-   																		port(BIT, 0, "out", prefix.."_wr_o") };
+   		field.ports =									{	port(SLV, field.size, "out", prefix.."_o", comment, VPORT_REG),
+   																		port(BIT, 0, "out", prefix.."_wr_o", nil, VPORT_REG) };
 
 			field.acklen = 1;
 			
@@ -582,8 +584,8 @@ function gen_hdl_code_passthrough(field, reg)
 
 			local comment = "Ports for asynchronous (clock: "..field.clock..") PASS_THROUGH field: '"..field.name.."' in reg: '"..reg.name.."'";
 
-   		field.ports =									{	port(SLV, field.size, "out", prefix.."_o", comment),
-   																		port(BIT, 0, "out", prefix.."_wr_o") };
+   		field.ports =									{	port(SLV, field.size, "out", prefix.."_o", comment, VPORT_REG),
+   																		port(BIT, 0, "out", prefix.."_wr_o", nil, VPORT_REG) };
 
 			field.signals =								{ signal(BIT, 0, prefix.."_wr_int"), 
 																			signal(BIT, 0, prefix.."_wr_int_delay"), 

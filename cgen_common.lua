@@ -198,21 +198,37 @@ function signal(type, nbits, name, comment)
     return t;
 end
 
+VPORT_WB = 1;
+VPORT_REG = 2;
+
 -- constructor for a HDL port
-function port(type, nbits, dir, name, comment, is_wb)
+function port(type, nbits, dir, name, comment, extra_flags)
     local t = {}
 		t.comment = comment;
     t.type = type;
+    
+    if(t.type == SLV and nbits == 1) then
+    	t.type = BIT;
+    end
+    
     t.range= nbits;
     t.name = name;
     t.dir = dir;
 
 
-    if(is_wb ~= nil and is_wb) then
-    	t.is_wb = true;
-    else
-    	t.is_wb = false;
+    if(extra_flags ~= nil) then
+       if(extra_flags == VPORT_WB) then
+          t.is_wb = true;
+          t.is_reg_port = false;
+       elseif(extra_flags == VPORT_REG) then
+          t.is_wb = false;
+          t.is_reg_port = true;
+       else
+          t.is_wb =false
+          t.is_reg_port = false;
+       end
     end
+    
     return t;
 end
 

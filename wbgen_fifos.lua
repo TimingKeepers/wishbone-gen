@@ -9,7 +9,7 @@ function fifo_wire_core_ports(fifo)
 
 	local ports = {
 		 port(BIT, 0, "in", prefix.."_"..fifo.rdwr.."_req_i", 
-					csel(fifo.direction == BUS_TO_CORE, "FIFO read request", "FIFO write request" ))
+					csel(fifo.direction == BUS_TO_CORE, "FIFO read request", "FIFO write request" ), VPORT_REG)
 	};
 
 -- wire the read/write request port
@@ -17,18 +17,18 @@ function fifo_wire_core_ports(fifo)
 
 -- add full/empty/usedw ports
 	if inset(FIFO_FULL, fifo.flags_dev) then
-		 table_join(ports, { port (BIT, 0, "out", prefix.."_"..fifo.rdwr.."_full_o", "FIFO full flag") });
+		 table_join(ports, { port (BIT, 0, "out", prefix.."_"..fifo.rdwr.."_full_o", "FIFO full flag", VPORT_REG) });
 		 table_join(fifo.maps, { vpm (fifo.rdwr.."_full_o", prefix.."_"..fifo.rdwr.."_full_o")});
 	end
 
 	if inset(FIFO_EMPTY, fifo.flags_dev) then
-		 table_join(ports, { port (BIT, 0, "out", prefix.."_"..fifo.rdwr.."_empty_o", "FIFO empty flag") });
+		 table_join(ports, { port (BIT, 0, "out", prefix.."_"..fifo.rdwr.."_empty_o", "FIFO empty flag", VPORT_REG) });
 		 table_join(fifo.maps, { vpm (fifo.rdwr.."_empty_o", prefix.."_"..fifo.rdwr.."_empty_o")});
 	end
 
 	if inset(FIFO_COUNT, fifo.flags_dev) then
 		 table_join(ports, { port (SLV, fifo.usedw_size, "out", prefix.."_"..fifo.rdwr.."_usedw_o", 
-															 "FIFO number of used words") });
+															 "FIFO number of used words", VPORT_REG) });
 		 table_join(fifo.maps, { vpm (fifo.rdwr.."_usedw_o", prefix.."_"..fifo.rdwr.."_usedw_o")});
 	end
 
@@ -39,7 +39,7 @@ function fifo_wire_core_ports(fifo)
 
 											if(fifo.direction == BUS_TO_CORE) then -- bus -> core fifo
 -- generate an output port for the field
-												 table_join(ports, {port (field.type, field.size, "out", field_pfx.."_o")});
+												 table_join(ports, {port (field.type, field.size, "out", field_pfx.."_o", "", VPORT_REG)});
 -- assign the output to the FIFO output port
 												 table_join(fifo.extra_code, { 
 																			 va(field_pfx.."_o", 
@@ -48,8 +48,8 @@ function fifo_wire_core_ports(fifo)
 												 
 											else 
 -- generate an input port for the field
-												 table_join(ports, {port (field.type, field.size, "in",  field_pfx.."_i")});
-
+												 table_join(ports, {port (field.type, field.size, "in",  field_pfx.."_i", "", VPORT_REG)});
+                         
 -- core -> bus fifo: wire the inputs to FIFO data input
 												 table_join(fifo.extra_code, { 
 																			 va(
