@@ -18,7 +18,7 @@
 -- MA 02111-1307, USA.
 --
 
-wbgen2_version="0.6.0"
+wbgen2_version="0.6.1-alpha"
 
 options = {};
 options.reset_type = "asynchronous";

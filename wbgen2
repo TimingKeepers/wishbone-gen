@@ -3571,7 +3571,7 @@ va("wb_ack_o",vi("ack_sreg",0));
 });
 return e;
 end
-wbgen2_version="0.6.0"
+wbgen2_version="0.6.1-alpha"
 options={};
 options.reset_type="asynchronous";
 options.target_interconnect="wb-classic";
