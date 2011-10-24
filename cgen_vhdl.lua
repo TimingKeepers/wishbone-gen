@@ -17,6 +17,7 @@ fieldtype_2_vhdl[UNSIGNED] = "unsigned";
 fieldtype_2_vhdl[ENUM] = "std_logic_vector";
 fieldtype_2_vhdl[SLV] = "std_logic_vector";
 
+
 -- generates a string containing VHDL-compatible numeric constant of value [value] and size [numbits]
 function gen_vhdl_bin_literal(value, numbits)
  if(numbits == 1) then
@@ -28,12 +29,19 @@ function gen_vhdl_bin_literal(value, numbits)
     
     n=value;
     r=math.pow(2, numbits-1);
-    
+
+		if(value == nil) then
+	    for i=1,numbits do
+				str=str.."X";
+			end    
+    else
     for i=1,numbits do
 			d=math.floor(n/r);
 			str=str..csel(d>0,"1","0");
 			n=n%r;
 			r=r/2;
+    end
+    
     end
     return str..'\"';
  end
@@ -50,23 +58,86 @@ function port2record(s)
 
    for i,port in ipairs(g_portlist) do
       if(port.name == s and port.is_reg_port) then
-      return "regs_b."..strip_periph_prefix(s)
+		      return csel(port.dir=="in", "regs_i.", "regs_o.")..strip_periph_prefix(s)
       end
    end
    return s
 end
 
+
 function cgen_vhdl_package()
-   emit("package "..periph.hdl_prefix.."_wbgen2_pkg is")
+	local pkg_name = periph.hdl_prefix.."_wbgen2_pkg";
+   emit("package "..pkg_name.." is")
    indent_right();
-   emit("type t_"..periph.hdl_prefix.."_registers is record");
+   emit("");
+
+
+   emit("");
+   emit("-- Input registers (user design -> WB slave)");
+   emit("");
+	
+	 cgen_vhdl_port_struct("in");
+
+   emit("");
+   emit("-- Output registers (WB slave -> user design)");
+   emit("");
+
+	 cgen_vhdl_port_struct("out");
+	   
+
+   
+   indent_left();
+
+ 	 local typename = "t_"..periph.hdl_prefix.."_in_registers";
+
+   emit("function \"or\" (left, right: "..typename..") return "..typename..";");
+   emit("function f_x_to_zero (x:std_logic) return std_logic;");
+
+   indent_left();
+   indent_left();
+   emit("end package;");
+   
+   emit("");
+   emit("package body "..pkg_name.." is");
+
+   emit("function f_x_to_zero (x:std_logic) return std_logic is");
+   emit("begin");
+   emit("if(x = 'X' or x = 'U') then");
+   emit("return '0';");
+   emit("else");
+   emit("return x;");
+   emit("end if; ");
+   emit("end function;");
+   
+   
+
+   emit("function \"or\" (left, right: "..typename..") return "..typename.." is");
+   emit("variable tmp: "..typename..";");
+   emit("begin");
+
+   for i=1,table.getn(g_portlist) do
+      local port = g_portlist[i];
+      if(port.is_reg_port == true and port.dir == "in") then
+      	local n = strip_periph_prefix(port.name);
+					emit("tmp."..n.." := left."..n.." or right."..n..";");
+      end
+   end
+	 emit("return tmp;");   
+   emit("end function;");
+   
+   emit("end package body;");
+end
+
+function cgen_vhdl_port_struct(direction)
+
+   emit("type t_"..periph.hdl_prefix.."_"..direction.."_registers is record");
    indent_right();
 
    local p_list= {};
    
    for i=1,table.getn(g_portlist) do
       local port = g_portlist[i];
-      if(port.is_reg_port == true) then
+      if(port.is_reg_port == true and port.dir == direction) then
          table.insert(p_list, port);
       end
    end
@@ -85,35 +156,25 @@ function cgen_vhdl_package()
    emit("end record;");
    indent_left();
    emit("");
-   emit("constant c_"..periph.hdl_prefix.."_registers_init_value: t_"..periph.hdl_prefix.."_registers := (");
+   emit("constant c_"..periph.hdl_prefix.."_"..direction.."_registers_init_value: t_"..periph.hdl_prefix.."_"..direction.."_registers := (");
    indent_right();
-
+      
    for i=1,table.getn(p_list) do
       local port = p_list[i];
-      
       line = strip_periph_prefix(port.name).." => ";
-
       if(port.range > 1) then
-         line = line.."(others => 'Z')"
-      else
-         line = line.."'Z'"
-      end
+        line = line.."(others => '0')"
+          else
+        line = line.."'0'"
+        end
+                if(i ~= table.getn(p_list)) then
+              line = line..",";
+            end
+      
+            emit(line);
+         end
+      emit(");");
 
-      if(i ~= table.getn(p_list)) then
-         line = line..",";
-      end
-
-      emit(line);
-   end
-
-  
-
-   
-   indent_left();
-   emit(");");
-   indent_left();
-   indent_left();
-   emit("end package;");
 end
 
 -- function generates a VHDL file header (some comments and library/package include definitions).
@@ -185,7 +246,8 @@ function cgen_vhdl_entity()
   end
 
   if(options.hdl_reg_style == "record") then
-     emit(string.format("%-40s : %-6s %s", "regs_b", "inout", "t_"..periph.hdl_prefix.."_registers"));
+     emit(string.format("%-40s : %-6s %s", "regs_i", "in", "t_"..periph.hdl_prefix.."_in_registers;"));
+     emit(string.format("%-40s : %-6s %s", "regs_o", "out", "t_"..periph.hdl_prefix.."_out_registers"));
   end
     
 	indent_left();
@@ -214,9 +276,9 @@ function cgen_vhdl_entity()
 	emit("begin");
 	indent_right();
 
-   if(options.hdl_reg_style == "record") then
-      emit("regs_b <= c_"..periph.hdl_prefix.."_registers_init_value;");
-   end
+--   if(options.hdl_reg_style == "record") then
+--      emit("regs_b <= c_"..periph.hdl_prefix.."_registers_init_value;");
+--   end
 end
 
 -- function generates the ending of VHDL file - in our case an END statement, closing the single ARCHITECTURE block.
