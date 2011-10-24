@@ -30,6 +30,9 @@ function gen_hdl_field_prefix(field, reg)
 
 end
 
+function gen_reset_value(field)
+  return csel(field.reset_value == nil, '0', field.reset_value)
+end
 -- generates VHDL for monostable-type field (both same-clock and other-clock)
 function gen_hdl_code_monostable(field, reg)
 	local prefix = gen_hdl_field_prefix(field, reg); 
@@ -57,8 +60,9 @@ function gen_hdl_code_monostable(field, reg)
 												});
 		
   	field.reset_code_main =  	{ va(prefix.."_int", 0) };
-	  field.write_code = 				{ va(prefix.."_int", vi("wrdata_reg", field.offset)) };
-	  field.read_code = 				{  };
+	  field.write_code = 				{ va(prefix.."_int", vi("wrdata_reg", field.offset)),
+	  														va(vi("rddata_reg", field.offset), vundefined()) };
+	  field.read_code = 				{ va(vi("rddata_reg", field.offset), vundefined()) };
 	  field.ackgen_code = 			{ va(prefix.."_int", 0) };
 
   else
@@ -96,10 +100,11 @@ function gen_hdl_code_monostable(field, reg)
 	 															va(prefix.."_int_delay", 0); };
 	 															
 
-	  field.write_code =				{ va(prefix.."_int", vi("wrdata_reg", field.offset));
+	  field.write_code =				{ va(vi("rddata_reg", field.offset), vundefined()),
+	  														va(prefix.."_int", vi("wrdata_reg", field.offset));
 	  														va(prefix.."_int_delay", vi("wrdata_reg", field.offset)); };
 
-	  field.read_code =					{ };
+	  field.read_code =					{ va(vi("rddata_reg", field.offset), vundefined())};
 
 	  field.ackgen_code_pre =		{ va(prefix.."_int", prefix.."_int_delay");
 	  														va(prefix.."_int_delay", 0); };
@@ -121,7 +126,8 @@ function gen_hdl_code_bit(field, reg)
 			field.signals = 				{ signal(BIT, 0, prefix.."_int") };
 			field.acklen = 					1;
 			
-			field.write_code =			{ va(prefix.."_int",  vi("wrdata_reg", field.offset)) };
+			field.write_code =			{ va(vi("rddata_reg", field.offset), vundefined()),
+																va(prefix.."_int",  vi("wrdata_reg", field.offset)) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
 	    field.reset_code_main =	{ va(prefix.."_int", 0) };
 			field.extra_code =			{ va(prefix.."_o", prefix.."_int") };
@@ -131,7 +137,7 @@ function gen_hdl_code_bit(field, reg)
 	   	field.ports =						{ port(BIT, 0, "in", prefix.."_i", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG) };
 			field.signals = 				{  };
 			field.acklen = 					1;
-			field.write_code =			{  };
+			field.write_code =			{ va(vi("rddata_reg", field.offset), vundefined()) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_i") };
       field.reset_code_main =	{  };
 			field.extra_code =	{  };
@@ -152,7 +158,8 @@ function gen_hdl_code_bit(field, reg)
 		    field.acklen =			 		1;
 		    
 		    field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_i") };
-		    field.write_code = 			{ va(prefix.."_load_o", 1) };
+		    field.write_code = 			{ va(vi("rddata_reg", field.offset), vundefined()),
+															    va(prefix.."_load_o", 1) };
 		    field.extra_code =			{ va(prefix.."_o", vi("wrdata_reg", field.offset)) };
 		    field.ackgen_code_pre = { va(prefix.."_load_o", 0) };
 		    field.ackgen_code  = 		{ va(prefix.."_load_o", 0) };
@@ -173,7 +180,8 @@ function gen_hdl_code_bit(field, reg)
 												  			signal(BIT, 0, prefix.."_sync1") };
 					
 			field.acklen = 					4;
-			field.write_code =			{ va(prefix.."_int", vi("wrdata_reg", field.offset)) };
+			field.write_code =			{ va(prefix.."_int", vi("wrdata_reg", field.offset)),
+																va(vi("rddata_reg", field.offset), vundefined()) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
 
 	    field.reset_code_main =	{ va(prefix.."_int", 0) };
@@ -201,7 +209,7 @@ function gen_hdl_code_bit(field, reg)
 															  signal(BIT, 0, prefix.."_sync1") };
 					
 		field.acklen = 						1;
-		field.write_code =				{  };
+		field.write_code =				{ va(vi("rddata_reg", field.offset), vundefined()) };
 		field.read_code = 				{ va(vi("rddata_reg", field.offset), prefix.."_sync1") };
 
     field.reset_code_main =		{ };
@@ -246,13 +254,15 @@ function gen_hdl_code_bit(field, reg)
 																			
 			field.acklen = 									6;
 		
-			field.write_code =						{ va(prefix.."_int_write", vi("wrdata_reg", field.offset));
+			field.write_code =						{ va(vi("rddata_reg", field.offset), vundefined());
+																			va(prefix.."_int_write", vi("wrdata_reg", field.offset));
 																			va(prefix.."_lw", 1);
 																			va(prefix.."_lw_delay", 1);
 																			va(prefix.."_lw_read_in_progress", 0);
 																			va(prefix.."_rwsel", 1); }; 
 
-			field.read_code =						{ 	va(prefix.."_lw", 1);
+			field.read_code =						{ 	va(vi("rddata_reg", field.offset), vundefined());
+																			va(prefix.."_lw", 1);
 																			va(prefix.."_lw_delay", 1);
 																			va(prefix.."_lw_read_in_progress", 1);
 																			va(prefix.."_rwsel", 0); }; 
