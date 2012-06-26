@@ -12,10 +12,10 @@ function fifo_wire_core_ports(fifo)
 					csel(fifo.direction == BUS_TO_CORE, "FIFO read request", "FIFO write request" ), VPORT_REG)
 	};
 
--- wire the read/write request port
+  -- wire the read/write request port
 	table_join(fifo.maps, { vpm (fifo.rdwr.."_req_i",  prefix.."_"..fifo.rdwr.."_req_i") });
 
--- add full/empty/usedw ports
+  -- add full/empty/usedw ports
 	if inset(FIFO_FULL, fifo.flags_dev) then
 		 table_join(ports, { port (BIT, 0, "out", prefix.."_"..fifo.rdwr.."_full_o", "FIFO full flag", VPORT_REG) });
 		 table_join(fifo.maps, { vpm (fifo.rdwr.."_full_o", prefix.."_"..fifo.rdwr.."_full_o")});
@@ -38,9 +38,9 @@ function fifo_wire_core_ports(fifo)
 											total_size = total_size + field.size;
 
 											if(fifo.direction == BUS_TO_CORE) then -- bus -> core fifo
--- generate an output port for the field
+                         -- generate an output port for the field
 												 table_join(ports, {port (field.type, field.size, "out", field_pfx.."_o", "", VPORT_REG)});
--- assign the output to the FIFO output port
+                         -- assign the output to the FIFO output port
 												 table_join(fifo.extra_code, { 
 																			 va(field_pfx.."_o", 
 																					vi(prefix.."_out_int", field.offset_unaligned + field.size -1,
@@ -179,7 +179,7 @@ function fifo_wire_bus_ports(fifo)
 	--		local old_readcode = deepcopy(r.read_code);
 			
 -- generate a delay for read request signal
-			table_join(r.extra_code, { vsyncprocess("bus_clock_int", "rst_n_i", {
+			table_join(r.extra_code, { vsyncprocess("clk_sys_i", "rst_n_i", {
 																	 vreset(0, {
 																		 va(fifo.full_prefix.."_rdreq_int_d0", 0)
 																	 });
@@ -227,10 +227,14 @@ function fifo_wire_bus_ports(fifo)
 			["no_std_regbank"] = true;
 	 };
 
-	 function gen_fifo_csr_field(flag, field_prefix, field_name, field_desc, size, type, offset)
-			if(fifo.flags_bus == nil) then
-				return;
+	 function gen_fifo_csr_field(flag, field_prefix, field_name, field_desc, size, type, offset, do_map)
+			
+      print("GenCSR Field "..field_name);
+
+      if(fifo.flags_bus == nil) then
+         return;
 			end
+
 			
 			if inset(flag, fifo.flags_bus) then
 				 local f = { 
@@ -248,19 +252,34 @@ function fifo_wire_bus_ports(fifo)
 						["read_code"] = {};
 						["ack_len"] = 2;
 				 };
-			
+         
 				 local sig =  fifo.full_prefix.."_"..field_prefix.."_int";
 
--- wire the FULL/EMPTY/USEDW signals to appropriate FIFO outputs
-				 table_join(fifo.maps, { vpm (fifo.nrdwr.."_"..field_prefix.."_o", sig)});
-				 table_join(f.signals, { signal (type, size, sig) });
-				 if(type == BIT) then
-						table_join(f.read_code, { va(vi("rddata_reg", f.offset), sig) });
-				 else
-						table_join(f.read_code, { va(vi("rddata_reg", f.offset + f.size - 1, f.offset), sig) });
-				 end
+         if(do_map==nil) then
+            do_map=true
+         else
+            do_map=false
+         end
+
+         -- wire the FULL/EMPTY/USEDW signals to appropriate FIFO outputs
+				 if(do_map) then
+            table_join(fifo.maps, { vpm (fifo.nrdwr.."_"..field_prefix.."_o", sig)});
+         end
+				 table_join(f.signals, { signal (csel(type == MONOSTABLE, BIT, type), size, sig) });
+
+         if (type == BIT) then
+            table_join(f.read_code, { va(vi("rddata_reg", f.offset), sig) });
+         elseif (type == SLV) then
+            table_join(f.read_code, { va(vi("rddata_reg", f.offset + f.size - 1, f.offset), sig) });
+         elseif (type == MONOSTABLE) then
+            f.access_bus = WRITE_ONLY;
+            f.access_dev = READ_ONLY;
+            f.reset_code_main = { va(sig, 0) };
+            f.write_code = { vif(vequal(vi("rddata_reg", f.offset), 1), { va(sig, 1) })};
+            f.ackgen_code = { va(sig, 0 )}
+         end
 				 table.insert(csr, f);		
-			else
+      elseif (do_map) then
 				 table_join(fifo.maps, { vpm (fifo.nrdwr.."_"..field_prefix.."_o", vopenpin())});
 			end
 	 end
@@ -281,6 +300,15 @@ function fifo_wire_bus_ports(fifo)
 											BIT,
 											17);
 
+	 gen_fifo_csr_field(FIFO_CLEAR, 
+											"clear_bus", 
+											"FIFO clear",
+											"write 1: clears FIFO '"..fifo.name.."\nwrite 0: no effect",
+											1,
+											MONOSTABLE,
+											18,
+                      false);
+
 	 gen_fifo_csr_field(FIFO_COUNT, 
 											"usedw", 
 											"FIFO counter",
@@ -299,7 +327,43 @@ function fifo_wire_bus_ports(fifo)
 -- wire the bus-side read/write request port
 	 table_join(fifo.maps, { vpm (fifo.nrdwr.."_req_i",  fifo.full_prefix.."_"..fifo.nrdwr.."req_int") });
 	 
-	 
+end
+
+
+function fifo_wire_clear_ports(fifo)
+   
+   c_dev = inset(FIFO_CLEAR, fifo.flags_dev);
+   c_bus = inset(FIFO_CLEAR, fifo.flags_bus); 
+
+	table_join(fifo.signals, {
+								signal (BIT, 0, fifo.full_prefix.."_rst_n")
+             });
+
+  table_join(fifo.maps, { vpm ("rst_n_i", fifo.full_prefix.."_rst_n")});
+
+  if(c_dev) then
+		 table_join(fifo.ports, { port (BIT, 0, "in", fifo.full_prefix.."_clear_i", "FIFO clear") });
+  end
+
+  if (c_dev and c_bus) then 
+     table_join(fifo.extra_code, {
+                   va(fifo.full_prefix.."_rst_n", vand("rst_n_i", vnot(vor(fifo.full_prefix.."_clear_i", fifo.full_prefix.."_clear_bus_int"))));
+                });
+
+  elseif (c_dev) then
+     
+     table_join(fifo.extra_code, {
+                   va(fifo.full_prefix.."_rst_n", vand("rst_n_i", vnot(fifo.full_prefix.."_clear_i")));
+                });
+  elseif (c_bus) then
+     table_join(fifo.extra_code, {
+                   va(fifo.full_prefix.."_rst_n", vand("rst_n_i", vnot(fifo.full_prefix.."_clear_bus_int")));
+                });
+  else
+     table_join(fifo.extra_code, {
+                   va(fifo.full_prefix.."_rst_n", "rst_n_i");
+                });
+  end
 
 end
 
@@ -325,10 +389,13 @@ function gen_code_fifo(fifo)
 
 	fifo_wire_core_ports(fifo);
 	fifo_wire_bus_ports(fifo);
+  fifo_wire_clear_ports(fifo);
+
 
 	table_join(fifo.signals, {
 								signal (SLV, fifo.total_size, fifo.full_prefix.."_in_int"),
-								signal (SLV, fifo.total_size, fifo.full_prefix.."_out_int") });
+								signal (SLV, fifo.total_size, fifo.full_prefix.."_out_int")
+ });
 
 	if(fifo.direction == BUS_TO_CORE) then
 		 table_join(fifo.signals, { signal (BIT, 0, fifo.full_prefix.."_wrreq_int") });
@@ -340,15 +407,15 @@ function gen_code_fifo(fifo)
 
 
 	if(fifo.clock == nil) then -- sync FIFO, single clock
-		 table_join(fifo.maps, { vpm ("clk_i", "bus_clock_int"); });
+		 table_join(fifo.maps, { vpm ("clk_i", "clk_sys_i"); });
 	else -- async FIFO, dual clocks
 	  if (fifo.direction == BUS_TO_CORE) then
 		 table_join(fifo.maps, { vpm ("rd_clk_i", fifo.clock);
-									 vpm ("wr_clk_i", "bus_clock_int") });
+									 vpm ("wr_clk_i", "clk_sys_i") });
 														 
 	  elseif (fifo.direction == CORE_TO_BUS) then
 		 table_join(fifo.maps, { vpm ("wr_clk_i", fifo.clock);
-									 vpm ("rd_clk_i", "bus_clock_int") });
+									 vpm ("rd_clk_i", "clk_sys_i") });
     end
 		 
 	end
