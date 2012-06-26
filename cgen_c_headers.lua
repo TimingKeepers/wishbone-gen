@@ -57,6 +57,7 @@ function cgen_c_ramdefs(ram)
    
    emit("/* definitions for RAM: "..ram.name.." */");	
    
+   emit(string.format("#define "..prefix.."_BASE 0x%08x %-50s", ram.base * DATA_BUS_WIDTH/8, "/* base address */"));
    emit(string.format("#define "..prefix.."_BYTES 0x%08x %-50s", ram.size * ram.width / 8, "/* size in bytes */"));
    emit(string.format("#define "..prefix.."_WORDS 0x%08x %-50s", ram.size, "/* size in "..ram.width.."-bit words, 32-bit aligned */"));
 end
