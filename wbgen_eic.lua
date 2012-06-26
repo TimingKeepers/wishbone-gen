@@ -203,7 +203,7 @@ function wbgen_generate_eic()
 	table.insert(periph, reg_isr);
 	
 	local maps = {	vgm("g_num_interrupts", 	periph.irqcount);
-									vpm("clk_i", 							"bus_clock_int");
+									vpm("clk_i", 							"clk_sys_i");
 									vpm("rst_n_i", 						"rst_n_i");
 									vpm("irq_i", 							"irq_inputs_vector_int");
 									vpm("irq_ack_o", 					"eic_irq_ack_int");
@@ -215,7 +215,7 @@ function wbgen_generate_eic()
 									vpm("reg_isr_o",					"eic_isr_status_int");
 									vpm("reg_isr_i",					"eic_isr_clear_int");
 									vpm("reg_isr_wr_stb_i",		"eic_isr_write_int");
-									vpm("wb_irq_o",						"wb_irq_o");
+									vpm("wb_irq_o",						"wb_int_o");
 								};
 		
 	local last_i;
