@@ -116,9 +116,10 @@ end
 -- function checks and calculates size of field "field" in register "reg"
 function calc_size(field, reg)
 -- monostable or bit-field? default size to 1 if not specified
+	
     if(field.type == MONOSTABLE or field.type == BIT) then
 			field.size = 1;
-    elseif (field.type == SLV) then
+    elseif (field.type == SLV or field.type == PASS_THROUGH) then
 -- SLV fields must have defined size
 			if(field.size == nil)  then
 		    die("no size declared for SLV-type field '".. field.name.."'");
@@ -277,6 +278,17 @@ function csel(cond, tr, fl)
   end
 end
 
+function check_field_types(field)
+	if(field.type == nil) then
+			die("no type declared for field: "..field.name);
+		end
+end
+
+function check_obj_names_prefixes(obj)
+	if(obj.name == nil) then
+			die("no name declared for object: "..obj.size);
+		end
+end
 
 function fix_prefix(obj)
 	if(obj.c_prefix == nil or obj.hdl_prefix==nil) then
@@ -336,7 +348,7 @@ end
 
 function check_max_size(reg)
     if(reg.total_size > DATA_BUS_WIDTH and reg.__type == TYPE_REG) then 
-        die ("register ", reg.name, " size exceeds data bus witdh (", DATA_BUS_WIDTH, " bits)"); 
+        die ("register ".. reg.name.. " size exceeds data bus witdh (".. DATA_BUS_WIDTH.. " bits)"); 
     end
 end
 
