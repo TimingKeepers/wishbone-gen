@@ -90,8 +90,8 @@ function gen_code_ram(ram)
 	ram.reset_code_main = {};
 
 -- wire the obligartory signals - address busses and clocks
-	table_join(ram.maps,	{ vpm ("clk_a_i", "bus_clock_int");
-													vpm ("clk_b_i", csel(ram.clock ~= nil, ram.clock, "bus_clock_int"));
+	table_join(ram.maps,	{ vpm ("clk_a_i", "clk_sys_i");
+													vpm ("clk_b_i", csel(ram.clock ~= nil, ram.clock, "clk_sys_i"));
 													vpm ("addr_b_i", prefix.."_addr_i");
 													vpm ("addr_a_i", vi("rwaddr_reg", log2up(ram.size)-1, 0));
 											  });
