@@ -123,6 +123,14 @@ function vand(a,b)
  return s;
 end
 
+function vor(a,b)
+ local s={};
+ s.t="or";
+ s.a=a;
+ s.b=b;
+ return s;
+end
+
 function vnot(a)
  local s={};
  s.t="not";
@@ -207,9 +215,9 @@ function port(type, nbits, dir, name, comment, extra_flags)
 		t.comment = comment;
     t.type = type;
     
-    if(t.type == SLV and nbits == 1) then
-    	t.type = BIT;
-    end
+--    if(t.type == SLV and nbits == 1) then
+--    	t.type = BIT;
+--    end
     
     t.range= nbits;
     t.name = name;
@@ -365,7 +373,7 @@ function cgen_gen_vlog_constants(filename)
  	end
 	 
 	  foreach_reg({TYPE_REG}, function(reg) 
-				file.write(file, string.format("`define %-30s %d'h%x\n", "ADDR_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) * reg.base));
+				file.write(file, string.format("`define %-30s %d'h%x\n", "ADDR_"..string.upper(periph.c_prefix.."_"..reg.c_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) * reg.base));
 				
 				foreach_subfield(reg, function(field)
 					if(field.c_prefix ~= nil) then
@@ -379,8 +387,8 @@ function cgen_gen_vlog_constants(filename)
 		foreach_reg({TYPE_RAM}, function(reg) 
 				local base = reg.select_bits * 
 										 math.pow (2, address_bus_width - address_bus_select_bits);				
-				file.write(file, string.format("`define %-30s %d'h%x\n", "BASE_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) *base));
-				file.write(file, string.format("`define %-30s 32'h%x\n", "SIZE_"..string.upper(periph.hdl_prefix.."_"..reg.hdl_prefix), reg.size));
+				file.write(file, string.format("`define %-30s %d'h%x\n", "BASE_"..string.upper(periph.c_prefix.."_"..reg.c_prefix), address_bus_width+2, (DATA_BUS_WIDTH/8) *base));
+				file.write(file, string.format("`define %-30s 32'h%x\n", "SIZE_"..string.upper(periph.c_prefix.."_"..reg.c_prefix), reg.size));
 		end);
 
 
