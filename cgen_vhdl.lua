@@ -92,6 +92,7 @@ function cgen_vhdl_package()
 
    emit("function \"or\" (left, right: "..typename..") return "..typename..";");
    emit("function f_x_to_zero (x:std_logic) return std_logic;");
+   emit("function f_x_to_zero (x:std_logic_vector) return std_logic_vector;");
 
    indent_left();
    indent_left();
@@ -108,6 +109,19 @@ function cgen_vhdl_package()
    emit("return x;");
    emit("end if; ");
    emit("end function;");
+
+   emit("function f_x_to_zero (x:std_logic_vector) return std_logic_vector is");
+	 emit("variable tmp: std_logic_vector(x'length-1 downto 0);");
+   emit("begin");
+   emit("for i in 0 to x'length-1 loop");
+   emit("if(x(i) = 'X' or x(i) = 'U') then");
+   emit("tmp(i):= '0';");
+   emit("else");
+   emit("tmp(i):=x(i);");
+   emit("end if; ");
+   emit("end loop; ");
+   emit("return tmp;");
+   emit("end function;");
    
    
 
@@ -119,7 +133,7 @@ function cgen_vhdl_package()
       local port = g_portlist[i];
       if(port.is_reg_port == true and port.dir == "in") then
       	local n = strip_periph_prefix(port.name);
-					emit("tmp."..n.." := left."..n.." or right."..n..";");
+					emit("tmp."..n.." := f_x_to_zero(left."..n..") or f_x_to_zero(right."..n..");");
       end
    end
 	 emit("return tmp;");   
@@ -143,7 +157,8 @@ function cgen_vhdl_port_struct(direction)
    end
 
    for i,port in ipairs(p_list) do
-      local line = string.format("%-40s : %s", strip_periph_prefix(port.name), fieldtype_2_vhdl[port.type]);
+   		local ptype = csel(port.type == SLV and port.range == 1, "std_logic", fieldtype_2_vhdl[port.type]);
+      local line = string.format("%-40s : %s", strip_periph_prefix(port.name), ptype);
 
       if(port.range > 1) then
          line = line.."("..(port.range-1).." downto 0)";
@@ -230,10 +245,11 @@ function cgen_vhdl_entity()
           emitx("-- "..port.comment.."\n");
        end
        
+       print(port.name.." "..port.type)
        -- generate code for the port
        local line = string.format("%-40s : %-6s %s", port.name, port.dir, fieldtype_2_vhdl[port.type]);
 
-       if(port.range > 1) then
+       if(port.range > 1 or port.type == SLV) then
           line = line.."("..(port.range-1).." downto 0)";
        end    
 
