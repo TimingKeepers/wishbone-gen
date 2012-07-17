@@ -17,6 +17,6 @@ Main "wbgen_regbank.lua"
 Main "wbgen_rams.lua"
 Main "wbgen_eic.lua"
 Main "wbgen_fifos.lua"
-Main "target_wishbone.lua"
+Main "target_pipelined_wb.lua"
 Main "wbgen_main.lua"
 

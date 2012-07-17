@@ -140,8 +140,13 @@ if(periph == nil) then die ("missing peripheral declaration"); end
 
 foreach_field( fix_prefix );
 foreach_field( fix_access );
+foreach_field( check_field_types );
 
 foreach_reg(ALL_REG_TYPES, fix_prefix );
+
+foreach_reg(ALL_REG_TYPES, check_obj_names_prefixes );
+foreach_field( check_obj_names_prefixes );
+
 
 periph = fix_prefix(periph);
 
@@ -172,7 +177,7 @@ foreach_reg({TYPE_REG, TYPE_RAM, TYPE_FIFO}, calc_address_sizes);
 
 assign_addresses();
 
-tree=gen_bus_logic_wishbone();
+tree=gen_bus_logic_pipelined_wb(MODE_PIPELINED);
 
 cgen_build_signals_ports();
 
