@@ -48,7 +48,7 @@ function gen_hdl_code_monostable(field, reg)
 		field.ports =		{	port(BIT, 0, "out", prefix.."_o", "Port for MONOSTABLE field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG ) };
 		field.acklen = 3;
 
-		field.extra_code = vsyncprocess("bus_clock_int", "rst_n_i", {
+		field.extra_code = vsyncprocess("clk_sys_i", "rst_n_i", {
 												 vreset (0, {
 													va(prefix.."_dly0", 0);
 													va(prefix.."_o", 0);
@@ -60,8 +60,8 @@ function gen_hdl_code_monostable(field, reg)
 												});
 		
   	field.reset_code_main =  	{ va(prefix.."_int", 0) };
-	  field.write_code = 				{ va(prefix.."_int", vi("wrdata_reg", field.offset)),
-	  														va(vi("rddata_reg", field.offset), vundefined()) };
+	  field.write_code = 				{ va(prefix.."_int", vi("wrdata_reg", field.offset))};
+--	  														va(vi("rddata_reg", field.offset), vundefined()) };
 	  field.read_code = 				{ va(vi("rddata_reg", field.offset), vundefined()) };
 	  field.ackgen_code = 			{ va(prefix.."_int", 0) };
 
@@ -100,7 +100,7 @@ function gen_hdl_code_monostable(field, reg)
 	 															va(prefix.."_int_delay", 0); };
 	 															
 
-	  field.write_code =				{ va(vi("rddata_reg", field.offset), vundefined()),
+	  field.write_code =				{ --va(vi("rddata_reg", field.offset), vundefined()),
 	  														va(prefix.."_int", vi("wrdata_reg", field.offset));
 	  														va(prefix.."_int_delay", vi("wrdata_reg", field.offset)); };
 
@@ -126,7 +126,7 @@ function gen_hdl_code_bit(field, reg)
 			field.signals = 				{ signal(BIT, 0, prefix.."_int") };
 			field.acklen = 					1;
 			
-			field.write_code =			{ va(vi("rddata_reg", field.offset), vundefined()),
+			field.write_code =			{ --va(vi("rddata_reg", field.offset), vundefined()),
 																va(prefix.."_int",  vi("wrdata_reg", field.offset)) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
 	    field.reset_code_main =	{ va(prefix.."_int", 0) };
@@ -137,7 +137,7 @@ function gen_hdl_code_bit(field, reg)
 	   	field.ports =						{ port(BIT, 0, "in", prefix.."_i", "Port for BIT field: '"..field.name.."' in reg: '"..reg.name.."'", VPORT_REG) };
 			field.signals = 				{  };
 			field.acklen = 					1;
-			field.write_code =			{ va(vi("rddata_reg", field.offset), vundefined()) };
+			field.write_code =			{ }; --va(vi("rddata_reg", field.offset), vundefined()) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_i") };
       field.reset_code_main =	{  };
 			field.extra_code =	{  };
@@ -158,7 +158,7 @@ function gen_hdl_code_bit(field, reg)
 		    field.acklen =			 		1;
 		    
 		    field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_i") };
-		    field.write_code = 			{ va(vi("rddata_reg", field.offset), vundefined()),
+		    field.write_code = 			{ --va(vi("rddata_reg", field.offset), vundefined()),
 															    va(prefix.."_load_o", 1) };
 		    field.extra_code =			{ va(prefix.."_o", vi("wrdata_reg", field.offset)) };
 		    field.ackgen_code_pre = { va(prefix.."_load_o", 0) };
@@ -180,13 +180,13 @@ function gen_hdl_code_bit(field, reg)
 												  			signal(BIT, 0, prefix.."_sync1") };
 					
 			field.acklen = 					4;
-			field.write_code =			{ va(prefix.."_int", vi("wrdata_reg", field.offset)),
-																va(vi("rddata_reg", field.offset), vundefined()) };
+			field.write_code =			{ va(prefix.."_int", vi("wrdata_reg", field.offset)) };
+																--va(vi("rddata_reg", field.offset), vundefined()) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
 
 	    field.reset_code_main =	{ va(prefix.."_int", 0) };
 
-			field.extra_code =			{	vcomment("synchronizer chain for field : "..field.name.." (type RW/RO, bus_clock_int <-> "..field.clock..")");
+			field.extra_code =			{	vcomment("synchronizer chain for field : "..field.name.." (type RW/RO, clk_sys_i <-> "..field.clock..")");
 																vsyncprocess(field.clock, "rst_n_i", {
 																vreset(0, {
  								    							va(prefix.."_o", 0);
@@ -209,12 +209,12 @@ function gen_hdl_code_bit(field, reg)
 															  signal(BIT, 0, prefix.."_sync1") };
 					
 		field.acklen = 						1;
-		field.write_code =				{ va(vi("rddata_reg", field.offset), vundefined()) };
+		field.write_code =				{ };--va(vi("rddata_reg", field.offset), vundefined()) };
 		field.read_code = 				{ va(vi("rddata_reg", field.offset), prefix.."_sync1") };
 
     field.reset_code_main =		{ };
 
-		field.extra_code =				{	vcomment("synchronizer chain for field : "..field.name.." (type RO/WO, "..field.clock.." -> bus_clock_int)");
+		field.extra_code =				{	vcomment("synchronizer chain for field : "..field.name.." (type RO/WO, "..field.clock.." -> clk_sys_i)");
 																vsyncprocess(field.clock, "rst_n_i", {
 																vreset(0, {
 																va(prefix.."_sync0", 0); 
@@ -254,18 +254,19 @@ function gen_hdl_code_bit(field, reg)
 																			
 			field.acklen = 									6;
 		
-			field.write_code =						{ va(vi("rddata_reg", field.offset), vundefined());
+			field.write_code =						{ --va(vi("rddata_reg", field.offset), vundefined());
 																			va(prefix.."_int_write", vi("wrdata_reg", field.offset));
 																			va(prefix.."_lw", 1);
 																			va(prefix.."_lw_delay", 1);
 																			va(prefix.."_lw_read_in_progress", 0);
 																			va(prefix.."_rwsel", 1); }; 
 
-			field.read_code =						{ 	va(vi("rddata_reg", field.offset), vundefined());
-																			va(prefix.."_lw", 1);
-																			va(prefix.."_lw_delay", 1);
-																			va(prefix.."_lw_read_in_progress", 1);
-																			va(prefix.."_rwsel", 0); }; 
+			field.read_code =						{ 	vif(vequal("wb_we_i", 0), {
+																				va(vi("rddata_reg", field.offset), vundefined());
+																				va(prefix.."_lw", 1);
+																				va(prefix.."_lw_delay", 1);
+																				va(prefix.."_lw_read_in_progress", 1);
+																				va(prefix.."_rwsel", 0); }  ); };
 																			
 
 			field.reset_code_main =				{ va(prefix.."_lw", 0);
@@ -285,7 +286,7 @@ function gen_hdl_code_bit(field, reg)
 																		};
 
 
-			field.extra_code =						{ vcomment("asynchronous BIT register : "..field.name.." (type RW/WO, "..field.clock.." <-> bus_clock_int)");
+			field.extra_code =						{ vcomment("asynchronous BIT register : "..field.name.." (type RW/WO, "..field.clock.." <-> clk_sys_i)");
 											    					  vsyncprocess(field.clock, "rst_n_i", {
 																				vreset(0, {
 															 					  va(prefix.."_lw_s0", 0); 
@@ -411,7 +412,7 @@ function gen_hdl_code_slv(field, reg)
 																			va(prefix.."_swb_delay", 0); };
 			
 
-			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RW/RO, "..field.clock.." <-> bus_clock_int)");
+			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RW/RO, "..field.clock.." <-> clk_sys_i)");
 																			vsyncprocess(field.clock, "rst_n_i", {
 																				vreset(0, {
 																					va(prefix.."_swb_s0", 0);
@@ -447,9 +448,10 @@ function gen_hdl_code_slv(field, reg)
 			field.acklen = 								6;
 			field.write_code =						{  }; 
 
-			field.read_code = 						{ va(prefix.."_lwb", 1);
-																			va(prefix.."_lwb_delay", 1);
-																			va(prefix.."_lwb_in_progress", 1); };
+			field.read_code = 						{ vif(vequal("wb_we_i", 0), {
+																				va(prefix.."_lwb", 1);
+																				va(prefix.."_lwb_delay", 1);
+																				va(prefix.."_lwb_in_progress", 1); } ); };
 
 			field.reset_code_main =				{ va(prefix.."_lwb", 0);
 																			va(prefix.."_lwb_delay", 0);
@@ -464,7 +466,7 @@ function gen_hdl_code_slv(field, reg)
 																			});
 																		};
 
-			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RO/WO, "..field.clock.." <-> bus_clock_int)"),
+			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RO/WO, "..field.clock.." <-> clk_sys_i)"),
 																			vsyncprocess(field.clock, "rst_n_i", {
 																			vreset(0, { 
 																				va(prefix.."_lwb_s0", 0);
@@ -516,10 +518,12 @@ function gen_hdl_code_slv(field, reg)
 																			va(prefix.."_lw_read_in_progress", 0);
 																			va(prefix.."_rwsel", 1); }; 
 
-			field.read_code =						{ 	va(prefix.."_lw", 1);
-																			va(prefix.."_lw_delay", 1);
-																			va(prefix.."_lw_read_in_progress", 1);
-																			va(prefix.."_rwsel", 0); }; 
+			field.read_code =						{ 	vif(vequal("wb_we_i", 0), { 
+																				va(prefix.."_lw", 1);
+																				va(prefix.."_lw_delay", 1);
+																				va(prefix.."_lw_read_in_progress", 1);
+																				va(prefix.."_rwsel", 0); } );
+																			};
 																			
 
 			field.reset_code_main =				{ va(prefix.."_lw", 0);
@@ -538,7 +542,7 @@ function gen_hdl_code_slv(field, reg)
 																			});
 																			};
 
-			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RW/WO, "..field.clock.." <-> bus_clock_int)");
+			field.extra_code =						{ vcomment("asynchronous "..fieldtype_2_vhdl[field.type].." register : "..field.name.." (type RW/WO, "..field.clock.." <-> clk_sys_i)");
 											    					  vsyncprocess(field.clock, "rst_n_i", {
 													 					  vreset(0, {
 																				va(prefix.."_lw_s0", 0);
