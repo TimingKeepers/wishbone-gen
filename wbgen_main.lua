@@ -27,6 +27,7 @@ options.register_data_output = false;
 options.lang = "vhdl";
 options.c_reg_style = "struct";
 options.hdl_reg_style = "signals";
+options.doc_format = "html"
 
 require "alt_getopt"
 
@@ -35,7 +36,8 @@ local usage_string = [[slave Wishbone generator
 
 local commands_string = [[options:
   -C, --co=FILE           Write the slave's generated C header file to FILE
-  -D, --doco=FILE         Write the slave's generated HTML documentation to FILE
+  -f, --docformat=FORMAT  Write documentation for texinfo or HTML (defaults to HTML)
+  -D, --doco=FILE         Write the slave's generated documentation to FILE
   -h, --help              Show this help text
   -l, --lang=LANG         Set the output Hardware Description Language (HDL) to LANG
                           Valid values for LANG: {vhdl,verilog}
@@ -49,7 +51,7 @@ local commands_string = [[options:
   -p, --vpo=FILE          Generate a VHDL package for slave's generated VHDL
                           (necessary with --hstyle=record)
 
-wbgen2 (c) Tomasz Wlostowski/CERN BE-CO-HT 2010]]
+wbgen2 (c) Tomasz Wlostowski/CERN BE-CO-HT 2010-2012]]
 
 function usage()
 	 print(usage_string)
@@ -66,19 +68,20 @@ function parse_args(arg)
 	   help		= "h",
 	   version	= "v",
 	   co		= "C",
+	   docformat	= "f",
 	   doco		= "D",
 	   constco	= "K",
 	   lang		= "l",
 	   vo		= "V",
-           vpo          = "p",
+     vpo          = "p",
 	   cstyle       = "s",
-           hstyle       = "H"
+     hstyle       = "H"
 	}
 
 	local optarg
 	local optind
 
-	optarg,optind = alt_getopt.get_opts (arg, "hvC:D:K:l:V:s:H:p:", long_opts)
+	optarg,optind = alt_getopt.get_opts (arg, "hvC:D:K:l:V:s:f:H:p:", long_opts)
 	for key,value in pairs (optarg) do
 		if key == "h" then
 			usage_complete()
@@ -96,6 +99,9 @@ function parse_args(arg)
 
 		elseif key == "K" then
 			options.output_vlog_constants_file = value
+
+		elseif key == "f" then
+			options.doc_format = value
 
 		elseif key == "l" then
 			options.lang = value
@@ -201,7 +207,13 @@ end
 
 if(options.output_doc_file ~= nil) then
 	cgen_generate_init(options.output_doc_file);
-	cgen_generate_documentation();
+
+	if(options.doc_format == "html") then
+		cgen_generate_html_documentation();
+	else
+		cgen_generate_texinfo_documentation();
+	end
+	
 	cgen_generate_done();
 end
 
