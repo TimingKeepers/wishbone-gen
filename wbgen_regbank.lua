@@ -129,7 +129,8 @@ function gen_hdl_code_bit(field, reg)
 			field.write_code =			{ --va(vi("rddata_reg", field.offset), vundefined()),
 																va(prefix.."_int",  vi("wrdata_reg", field.offset)) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
-	    field.reset_code_main =	{ va(prefix.."_int", 0) };
+			print("RV: ", field.reset_value)
+	    field.reset_code_main =	{ va(prefix.."_int", csel(field.reset_value == nil, 0, field.reset_value)) };
 			field.extra_code =			{ va(prefix.."_o", prefix.."_int") };
 
 	  elseif (field.access == ACC_RO_WO) then
