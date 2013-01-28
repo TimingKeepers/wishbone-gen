@@ -32,8 +32,7 @@ end
 function cgen_tex_memmap()
 	local evenodd=0;
 	local n = 2;
-
-	emit("@subsubsection Memory map summary");
+	emit("@regsection Memory map summary");
 
 	emit("@multitable  @columnfractions .10 .15 .15 .55")
 	emit("@headitem Address @tab Type @tab Prefix @tab Name")
@@ -80,7 +79,7 @@ end
 
 function cgen_texinfo_reg(reg)
 
-	emit("@subsubsection @code{"..reg.c_prefix.."} - "..reg.name);
+	emit("@regsection @code{"..reg.c_prefix.."} - "..reg.name);
 
 	cur_reg_no = cur_reg_no + 1;
 
