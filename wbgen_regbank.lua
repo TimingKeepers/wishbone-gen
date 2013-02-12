@@ -61,8 +61,7 @@ function gen_hdl_code_monostable(field, reg)
 		
   	field.reset_code_main =  	{ va(prefix.."_int", 0) };
 	  field.write_code = 				{ va(prefix.."_int", vi("wrdata_reg", field.offset))};
---	  														va(vi("rddata_reg", field.offset), vundefined()) };
-	  field.read_code = 				{ va(vi("rddata_reg", field.offset), vundefined()) };
+	  field.read_code = 				{ va(vi("rddata_reg", field.offset), 0) };
 	  field.ackgen_code = 			{ va(prefix.."_int", 0) };
 
   else
@@ -100,11 +99,10 @@ function gen_hdl_code_monostable(field, reg)
 	 															va(prefix.."_int_delay", 0); };
 	 															
 
-	  field.write_code =				{ --va(vi("rddata_reg", field.offset), vundefined()),
-	  														va(prefix.."_int", vi("wrdata_reg", field.offset));
+	  field.write_code =				{	va(prefix.."_int", vi("wrdata_reg", field.offset));
 	  														va(prefix.."_int_delay", vi("wrdata_reg", field.offset)); };
 
-	  field.read_code =					{ va(vi("rddata_reg", field.offset), vundefined())};
+	  field.read_code =					{ va(vi("rddata_reg", field.offset), 0)};
 
 	  field.ackgen_code_pre =		{ va(prefix.."_int", prefix.."_int_delay");
 	  														va(prefix.."_int_delay", 0); };
@@ -129,7 +127,6 @@ function gen_hdl_code_bit(field, reg)
 			field.write_code =			{ --va(vi("rddata_reg", field.offset), vundefined()),
 																va(prefix.."_int",  vi("wrdata_reg", field.offset)) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
-			print("RV: ", field.reset_value)
 	    field.reset_code_main =	{ va(prefix.."_int", csel(field.reset_value == nil, 0, field.reset_value)) };
 			field.extra_code =			{ va(prefix.."_o", prefix.."_int") };
 

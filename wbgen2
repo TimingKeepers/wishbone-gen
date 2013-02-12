@@ -2506,7 +2506,7 @@ va(e.."_o",vand(e.."_int",vnot(e.."_dly0")));
 });
 t.reset_code_main={va(e.."_int",0)};
 t.write_code={va(e.."_int",vi("wrdata_reg",t.offset))};
-t.read_code={va(vi("rddata_reg",t.offset),vundefined())};
+t.read_code={va(vi("rddata_reg",t.offset),0)};
 t.ackgen_code={va(e.."_int",0)};
 else
 t.signals={signal(BIT,0,e.."_int"),
@@ -2534,10 +2534,9 @@ va(e.."_o",vand(e.."_sync2",vnot(e.."_sync1")));
 });};
 t.reset_code_main={va(e.."_int",0);
 va(e.."_int_delay",0);};
-t.write_code={
-va(e.."_int",vi("wrdata_reg",t.offset));
+t.write_code={va(e.."_int",vi("wrdata_reg",t.offset));
 va(e.."_int_delay",vi("wrdata_reg",t.offset));};
-t.read_code={va(vi("rddata_reg",t.offset),vundefined())};
+t.read_code={va(vi("rddata_reg",t.offset),0)};
 t.ackgen_code_pre={va(e.."_int",e.."_int_delay");
 va(e.."_int_delay",0);};
 end
@@ -2553,7 +2552,6 @@ t.acklen=1;
 t.write_code={
 va(e.."_int",vi("wrdata_reg",t.offset))};
 t.read_code={va(vi("rddata_reg",t.offset),e.."_int")};
-print("RV: ",t.reset_value)
 t.reset_code_main={va(e.."_int",csel(t.reset_value==nil,0,t.reset_value))};
 t.extra_code={va(e.."_o",e.."_int")};
 elseif(t.access==ACC_RO_WO)then
