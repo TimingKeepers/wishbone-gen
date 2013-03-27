@@ -209,7 +209,7 @@ if(options.output_doc_file ~= nil) then
 	cgen_generate_init(options.output_doc_file);
 
 	if(options.doc_format == "html") then
-		cgen_generate_html_documentation();
+		cgen_generate_documentation();
 	else
 		cgen_generate_texinfo_documentation();
 	end
