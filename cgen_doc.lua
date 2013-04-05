@@ -624,7 +624,7 @@ function cgen_doc_irq(irq)
 end
 
 
-function cgen_generate_documentation()
+function cgen_generate_html_documentation()
 	cgen_new_snippet(); cgen_doc_hdl_symbol(); local h_sym = cgen_get_snippet();
 
 	cgen_new_snippet();
