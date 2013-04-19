@@ -36,7 +36,7 @@ local usage_string = [[slave Wishbone generator
 
 local commands_string = [[options:
   -C, --co=FILE           Write the slave's generated C header file to FILE
-  -f, --docformat=FORMAT  Write documentation for texinfo or HTML (defaults to HTML)
+  -f, --docformat=FORMAT  Write documentation for latex, texinfo or HTML (defaults to HTML)
   -D, --doco=FILE         Write the slave's generated documentation to FILE
   -h, --help              Show this help text
   -l, --lang=LANG         Set the output Hardware Description Language (HDL) to LANG
@@ -209,8 +209,11 @@ if(options.output_doc_file ~= nil) then
 	cgen_generate_init(options.output_doc_file);
 
 	if(options.doc_format == "html") then
+    print("gen html");
 		cgen_generate_documentation();
-	else
+	elseif(options.doc_format == "latex") then
+    cgen_generate_latex_documentation();
+  else
 		cgen_generate_texinfo_documentation();
 	end
 	
