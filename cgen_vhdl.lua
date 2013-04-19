@@ -230,6 +230,27 @@ function cgen_vhdl_entity()
    end
 
 	emit ("entity "..periph.hdl_entity.." is");
+  indent_right();
+
+  if(table.getn(g_optlist) ~= 0) then
+     emit ("generic (");
+     indent_right();
+     emiti()
+
+     for i,v in pairs(g_optlist) do
+        emiti();
+        emitx(v.." : integer := 1");
+        if(i ~= table.getn(g_optlist)) then
+           emit(";")
+        else
+           emit(");")
+        end
+     end
+     indent_left();
+  end
+
+  indent_left();
+
 	indent_right();
   emit ("port (");
 	indent_right();
@@ -245,7 +266,7 @@ function cgen_vhdl_entity()
           emitx("-- "..port.comment.."\n");
        end
        
-       print(port.name.." "..port.type)
+--       print(port.name.." "..port.type)
        -- generate code for the port
        local line = string.format("%-40s : %-6s %s", port.name, port.dir, fieldtype_2_vhdl[port.type]);
 
@@ -605,6 +626,25 @@ function cgen_generate_vhdl_code(tree)
 		end
 	end
 
+	-- function generates an if..else..end if control block.
+	function cgen_vhdl_generate_if(node)
+     if(g_gen_block_count == nil) then
+        g_gen_block_count = 0
+     else
+        g_gen_block_count = g_gen_block_count + 1
+     end
+     
+     gname = string.format("genblock_%d", g_gen_block_count)
+		emiti(); emitx(gname..": if (");
+	-- recurse the condition block
+		recurse(node.cond);
+		emitx(") generate\n");
+
+    indent_right();	recurse(node.code);	indent_left();
+    emit("end generate "..gname..";");
+ end
+
+
 	-- function generates a NOT unary expression.
 	function cgen_vhdl_not(node)
 	-- check type of node to be NOTed
@@ -779,6 +819,7 @@ function cgen_generate_vhdl_code(tree)
 			["combprocess"] 	= cgen_vhdl_combprocess;
 			["assign"]			 	= cgen_vhdl_assign;
 			["if"]			 			= cgen_vhdl_if;
+			["generate_if"]		= cgen_vhdl_generate_if;
 			["eq"]					 	= cgen_vhdl_binary_op;
 			["add"]					 	= cgen_vhdl_binary_op;		
 			["sub"]					 	= cgen_vhdl_binary_op;

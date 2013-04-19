@@ -269,19 +269,33 @@ function gen_bus_logic_pipelined_wb(mode)
 		table_join(code, {vcomment("Drive the data output bus"); va("wb_dat_o", "rddata_reg") } );
 	end
 
-  foreach_reg(ALL_REG_TYPES, function(reg) 
-								if(reg.extra_code ~= nil) then
-									table_join(code, {vcomment("extra code for reg/fifo/mem: "..reg.name);});
-									table_join(code, reg.extra_code);
+  
+  foreach_reg(ALL_REG_TYPES, 
+              function(reg) 
+                 ex_code = {}
 
-								end
+                 if(reg.extra_code ~= nil) then
+                    table_join(ex_code, {vcomment("extra code for reg/fifo/mem: "..reg.name);});
+                    table_join(ex_code, reg.extra_code);
 
-							  foreach_subfield(reg, function(field, reg) 
-						   		if (field.extra_code ~= nil) then
-						   			table_join(code, {vcomment(field.name); field.extra_code}); 
-						   		end	
-						   	end );
+                 end
+
+                 foreach_subfield(reg, 
+                                  function(field, reg) 
+                                     if (field.extra_code ~= nil) then
+                                        table_join(ex_code, {vcomment(field.name); field.extra_code}); 
+                                     end	
+                                  end );
+                 
+                 if(reg.optional == nil) then
+                    table_join(code, ex_code)
+                 else
+                    table_join(code, {vgenerate_if(vnot(vequal(reg.optional, 0)), ex_code )} ); 
+                 end
+
 							end);
+
+
 	
 	if(address_bus_width > 0) then
 		table_join(code, { 	va("rwaddr_reg", "wb_adr_i");	});

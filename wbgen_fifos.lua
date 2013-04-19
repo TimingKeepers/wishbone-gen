@@ -229,8 +229,6 @@ function fifo_wire_bus_ports(fifo)
 
 	 function gen_fifo_csr_field(flag, field_prefix, field_name, field_desc, size, type, offset, do_map)
 			
-      print("GenCSR Field "..field_name);
-
       if(fifo.flags_bus == nil) then
          return;
 			end

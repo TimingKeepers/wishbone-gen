@@ -1,5 +1,9 @@
-#!/usr/bin/lua
+-- -*- Mode: LUA; tab-width: 2 -*-
 
+-- wbgen2 - a simple Wishbone slave generator
+-- (c) 2010 Tomasz Wlostowski
+-- CERN BE-Co-HT
+-- LICENSED UNDER GPL v2
 
 function ram_wire_core_ports(ram)
 	local prefix = ram.full_prefix;
@@ -112,7 +116,7 @@ function gen_code_ram(ram)
 
 -- instantiate the RAM.
 	ram.extra_code = { 			vcomment ("RAM block instantiation for memory: "..ram.name);
-													vinstance (prefix.."_raminst", "wbgen2_dpssram", ram.maps );
+                          vinstance (prefix.."_raminst", "wbgen2_dpssram", ram.maps );
 									 };
 
 	ram.base = ram.select_bits * math.pow (2, address_bus_width - address_bus_select_bits);				

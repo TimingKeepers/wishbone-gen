@@ -1,7 +1,8 @@
-#!/usr/bin/lua
+-- -*- Mode: LUA; tab-width: 2 -*-
 
--- wbgen2, (c) 2010 Tomasz Wlostowski
---                  CERN BE-Co-HT
+-- wbgen2 - a simple Wishbone slave generator
+-- (c) 2010-2013 CERN
+-- CERN BE-CO-HT
 -- LICENSED UNDER GPL v2
 
 
@@ -104,6 +105,14 @@ function vif(cond, code, code_else)
  s.cond={ cond };
  s.code=code;
  s.code_else=code_else;
+ return s;
+end
+
+function vgenerate_if(cond, code)
+ local s={};
+ s.t="generate_if";
+ s.cond={ cond };
+ s.code=code;
  return s;
 end
 
@@ -240,6 +249,7 @@ function port(type, nbits, dir, name, comment, extra_flags)
     return t;
 end
 
+
 global_ports = {};
 global_signals = {};
 
@@ -292,9 +302,30 @@ function cgen_build_portlist()
 		return portlist;
 end
 
+function cgen_build_optional_list()
+	local t1={}
+	local t2={} -- fixme: extremely ugly
+	local j=1
+	for i,v in pairs(tree_2_table("optional")) do
+		if t1[v] == nil then
+			t1[v]=1
+			t2[j]=v
+			j=j+1
+		end
+	end
+		
+	return t2
+end
+
 function cgen_find_sigport(name)
 	for i,v in pairs(g_portlist) do if(name == v.name) then return v; end end
 	for i,v in pairs(g_siglist) do if(name == v.name) then return v; end end
+	for i,v in pairs(g_optlist) do if(name == v) then 
+        local gp = {}
+        gp.type = INTEGER;
+        gp.name = v;
+        return gp;
+  end end
 	
 	die("cgen internal error: undefined signal '"..name.."'");
 	
@@ -304,6 +335,7 @@ end
 function cgen_build_signals_ports()
 	g_portlist = cgen_build_portlist();
 	g_siglist = cgen_build_siglist();
+	g_optlist = cgen_build_optional_list();
 end
 
 cur_indent = 0;
