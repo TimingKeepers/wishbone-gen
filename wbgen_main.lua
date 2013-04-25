@@ -209,8 +209,7 @@ if(options.output_doc_file ~= nil) then
 	cgen_generate_init(options.output_doc_file);
 
 	if(options.doc_format == "html") then
-    print("gen html");
-		cgen_generate_documentation();
+		cgen_generate_html_documentation();
 	elseif(options.doc_format == "latex") then
     cgen_generate_latex_documentation();
   else
