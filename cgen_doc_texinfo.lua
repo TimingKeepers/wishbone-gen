@@ -89,8 +89,8 @@ function cgen_texinfo_reg(reg)
 --        emit("Address: @code{"..string.format("0x%x", reg.base * (DATA_BUS_WIDTH/8)).."}");
 	
 	if(reg.description ~= nil) then
-           emit(reg.description);
-	end
+           emit(format_tex_string(reg.description));
+ 	end
 
 	emit("@multitable @columnfractions .10 .10 .15 .10 .55")
 	emit("@headitem Bits @tab Access @tab Prefix @tab Default @tab Name")
@@ -110,7 +110,14 @@ function cgen_texinfo_reg(reg)
            emit("@code{"..string.upper(field.c_prefix).."}");
         end
 	
-        emit("@tab @code{X} @tab ");
+				val = 'X';
+				if(field.reset_value ~= nil) then
+					val = field.reset_value;
+				elseif ((field.access_bus == READ_WRITE and field.access_dev == READ_ONLY) or field.type == MONOSTABLE or field.access_bus == WRITE_ONLY) then
+					val = '0'
+				end
+				
+        emit("@tab @code{"..val.."} @tab ");
         emit(field.name);
 
        -- emit("@columnfractions 1")
@@ -122,15 +129,25 @@ function cgen_texinfo_reg(reg)
 	end);
 	emit("@end multitable");		
 
-        emit("@multitable @columnfractions 0.15 0.85")
-     	emit("@headitem Field @tab Description")
+	local	got_any_descriptions = false
 	foreach_subfield(reg, function(field)
+                                 if(field.description ~= nil) then
+                                 		got_any_descriptions = true
+                                 end 
+                              end);
+
+
+	if(got_any_descriptions) then
+	  emit("@multitable @columnfractions 0.15 0.85")
+  	emit("@headitem Field @tab Description")
+		foreach_subfield(reg, function(field)
                                  if(field.description ~= nil) then
                                     pfx = csel(field.c_prefix == nil, reg.c_prefix, field.c_prefix)
                                     emit("@item @code{"..pfx.."} @tab "..format_tex_string(field.description));
                                  end 
                               end);
-        emit("@end multitable");		
+    emit("@end multitable");		
+  end
 
 
 end
