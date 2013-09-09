@@ -2613,6 +2613,7 @@ e=string.gsub(e,"_","\\_");
 emit(e);
 end
 end);
+emit('\\hline');
 emit('\\end{tabular}');
 emit('}');
 end

@@ -99,6 +99,7 @@ function cgen_doc_lx_memmap()
 		end
 	end);
 
+	emit('\\hline');
   emit('\\end{tabular}');
   emit('}');  --end of resizebox
 
