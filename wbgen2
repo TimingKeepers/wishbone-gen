@@ -2590,11 +2590,11 @@ emit('\\rowcolors{2}{gray!25}{white}');
 emit('\\resizebox{\\textwidth}{!}{');
 emit('\\begin{tabular}{|l|l|l|l|l|}');
 emit('\\rowcolor{RoyalPurple}');
-emit('\\color{white} H/W Addr & \\color{white} Type & \\color{white} Name &');
+emit('\\color{white} SW Offset & \\color{white} Type & \\color{white} Name &');
 emit('\\color{white} HW prefix & \\color{white} C prefix\\\\');
 foreach_reg({TYPE_REG},function(t)
 if(t.full_hdl_prefix~=nil)then
-e=string.format("0x%x",t.base)..'& ';
+e=string.format("0x%x",t.base*(DATA_BUS_WIDTH/8))..'& ';
 if(t.doc_is_fiforeg==nil)then
 e=e.."REG & ";
 else
@@ -2607,7 +2607,7 @@ end
 end);
 foreach_reg({TYPE_RAM},function(t)
 if(t.full_hdl_prefix~=nil)then
-e=string.format("0x%x - 0x%x",t.base,t.base+math.pow(2,t.wrap_bits)*t.size-1)..'& ';
+e=string.format("0x%x - 0x%x",t.base*(DATA_BUS_WIDTH/8),t.base*(DATA_BUS_WIDTH/8)+(math.pow(2,t.wrap_bits)*t.size-1)*DATA_BUS_WIDTH/8)..'& ';
 e=e.."MEM & "..t.name.." & "..t.full_hdl_prefix.." & "..string.upper(t.c_prefix).."\\\\";
 e=string.gsub(e,"_","\\_");
 emit(e);

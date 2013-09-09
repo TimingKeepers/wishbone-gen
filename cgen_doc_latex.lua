@@ -69,12 +69,12 @@ function cgen_doc_lx_memmap()
   emit('\\resizebox{\\textwidth}{!}{');
   emit('\\begin{tabular}{|l|l|l|l|l|}');
   emit('\\rowcolor{RoyalPurple}');
-  emit('\\color{white} H/W Addr & \\color{white} Type & \\color{white} Name &');
+  emit('\\color{white} SW Offset & \\color{white} Type & \\color{white} Name &');
   emit('\\color{white} HW prefix & \\color{white} C prefix\\\\');
 
 	foreach_reg({TYPE_REG}, function(reg)
 		if(reg.full_hdl_prefix ~= nil) then
-      reg_text = string.format("0x%x", reg.base)..'& ';
+      reg_text = string.format("0x%x", reg.base * (DATA_BUS_WIDTH/8))..'& ';
 
 			if(reg.doc_is_fiforeg == nil) then
 			   reg_text = reg_text.."REG & ";
@@ -91,7 +91,7 @@ function cgen_doc_lx_memmap()
 
 	foreach_reg({TYPE_RAM}, function(reg)
 		if(reg.full_hdl_prefix ~= nil) then
-      reg_text = string.format("0x%x - 0x%x", reg.base, reg.base+math.pow(2, reg.wrap_bits)*reg.size-1)..'& ';
+      reg_text = string.format("0x%x - 0x%x", reg.base*(DATA_BUS_WIDTH/8), reg.base*(DATA_BUS_WIDTH/8)+(math.pow(2, reg.wrap_bits)*reg.size-1)*DATA_BUS_WIDTH/8)..'& ';
 
       reg_text = reg_text.."MEM & "..reg.name.." & "..reg.full_hdl_prefix.." & "..string.upper(reg.c_prefix).."\\\\";
       reg_text = string.gsub(reg_text, "_", "\\_");
