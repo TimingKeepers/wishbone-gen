@@ -102,12 +102,12 @@ function cgen_vhdl_package()
    emit("package body "..pkg_name.." is");
 
    emit("function f_x_to_zero (x:std_logic) return std_logic is");
-   emit("begin");
-   emit("if(x = 'X' or x = 'U') then");
-   emit("return '0';");
-   emit("else");
-   emit("return x;");
-   emit("end if; ");
+   emit("begin")
+	 emit("if x = '1' then")
+   emit("return '1';")
+   emit("else")
+	 emit("return '0';")
+	 emit("end if;")
    emit("end function;");
 
    emit("function f_x_to_zero (x:std_logic_vector) return std_logic_vector is");
