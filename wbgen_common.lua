@@ -192,8 +192,17 @@ function align(field, offset)
 -- no alignment defined? just assume it's 1
   if(field.align == nil) then a=1; else a=field.align; end 
 
+  local newofs;
+
+	if (offset == 0 and field.align ~= nil) then
+		newofs = field.align;
+	else
+		newofs = a  * math.floor((offset + a - 1) / a);
+	end
+		
 -- calculate the aligned offset    
-  local newofs = a  * math.floor((offset + a - 1) / a);
+
+	print("Align  ", field.name, field.align, offset, newofs);
 
   return newofs;
 end
@@ -204,6 +213,7 @@ function calc_field_offset(field, reg)
 
 -- align the field offset next to the current offset in the reg
 	 local ofs = reg.current_offset;
+
 
 -- FIFOs can span multiple I/O registers.
 	 if (reg.__type == TYPE_FIFO) then
