@@ -2946,163 +2946,163 @@ t.ackgen_code_pre={va(e.."_int",e.."_int_delay");
 va(e.."_int_delay",0);};
 end
 end
-function gen_hdl_code_bit(t,a)
-local e=gen_hdl_field_prefix(t,a);
-t.prefix=e;
-if(t.clock==nil)then
-if(t.access==ACC_RW_RO)then
-t.ports={port(BIT,0,"out",e.."_o","Port for BIT field: '"..t.name.."' in reg: '"..a.name.."'",VPORT_REG)};
-t.signals={signal(BIT,0,e.."_int")};
-t.acklen=1;
-t.write_code={
-va(e.."_int",vi("wrdata_reg",t.offset))};
-t.read_code={va(vi("rddata_reg",t.offset),e.."_int")};
-t.reset_code_main={va(e.."_int",csel(t.reset_value==nil,0,t.reset_value))};
-t.extra_code={va(e.."_o",e.."_int")};
-elseif(t.access==ACC_RO_WO)then
-t.ports={port(BIT,0,"in",e.."_i","Port for BIT field: '"..t.name.."' in reg: '"..a.name.."'",VPORT_REG)};
-t.signals={};
-t.acklen=1;
-t.write_code={};
-t.read_code={va(vi("rddata_reg",t.offset),e.."_i")};
-t.reset_code_main={};
-t.extra_code={};
-elseif(t.access==ACC_WO_RO)then
-die("WO-RO type unsupported yet ("..t.name..")");
-elseif(t.access==ACC_RW_RW)then
-if(t.load==LOAD_EXT)then
-t.ports={port(BIT,0,"out",e.."_o","Ports for BIT field: '"..t.name.."' in reg: '"..a.name.."'",VPORT_REG),
-port(BIT,0,"in",e.."_i",nil,VPORT_REG),
-port(BIT,0,"out",e.."_load_o",nil,VPORT_REG)};
-t.acklen=1;
-t.read_code={va(vi("rddata_reg",t.offset),e.."_i")};
-t.write_code={
-va(e.."_load_o",1)};
-t.extra_code={va(e.."_o",vi("wrdata_reg",t.offset))};
-t.ackgen_code_pre={va(e.."_load_o",0)};
-t.ackgen_code={va(e.."_load_o",0)};
-t.reset_code_main={va(e.."_load_o",0)};
+function gen_hdl_code_bit(e,a)
+local t=gen_hdl_field_prefix(e,a);
+e.prefix=t;
+if(e.clock==nil)then
+if(e.access==ACC_RW_RO)then
+e.ports={port(BIT,0,"out",t.."_o","Port for BIT field: '"..e.name.."' in reg: '"..a.name.."'",VPORT_REG)};
+e.signals={signal(BIT,0,t.."_int")};
+e.acklen=1;
+e.write_code={
+va(t.."_int",vi("wrdata_reg",e.offset))};
+e.read_code={va(vi("rddata_reg",e.offset),t.."_int")};
+e.reset_code_main={va(t.."_int",csel(e.reset_value==nil,0,e.reset_value))};
+e.extra_code={va(t.."_o",t.."_int")};
+elseif(e.access==ACC_RO_WO)then
+e.ports={port(BIT,0,"in",t.."_i","Port for BIT field: '"..e.name.."' in reg: '"..a.name.."'",VPORT_REG)};
+e.signals={};
+e.acklen=1;
+e.write_code={};
+e.read_code={va(vi("rddata_reg",e.offset),t.."_i")};
+e.reset_code_main={};
+e.extra_code={};
+elseif(e.access==ACC_WO_RO)then
+die("WO-RO type unsupported yet ("..e.name..")");
+elseif(e.access==ACC_RW_RW)then
+if(e.load==LOAD_EXT)then
+e.ports={port(BIT,0,"out",t.."_o","Ports for BIT field: '"..e.name.."' in reg: '"..a.name.."'",VPORT_REG),
+port(BIT,0,"in",t.."_i",nil,VPORT_REG),
+port(BIT,0,"out",t.."_load_o",nil,VPORT_REG)};
+e.acklen=1;
+e.read_code={va(vi("rddata_reg",e.offset),t.."_i")};
+e.write_code={
+va(t.."_load_o",1)};
+e.extra_code={va(t.."_o",vi("wrdata_reg",e.offset))};
+e.ackgen_code_pre={va(t.."_load_o",0)};
+e.ackgen_code={va(t.."_load_o",0)};
+e.reset_code_main={va(t.."_load_o",0)};
 else
-die("internal RW/RW register storage unsupported yet ("..t.name..")");
+die("internal RW/RW register storage unsupported yet ("..e.name..")");
 end
 end
 else
-if(t.access==ACC_RW_RO)then
-t.ports={port(BIT,0,"out",e.."_o","Port for asynchronous (clock: "..t.clock..") BIT field: '"..t.name.."' in reg: '"..a.name.."'",VPORT_REG)};
-t.signals={signal(BIT,0,e.."_int"),
-signal(BIT,0,e.."_sync0"),
-signal(BIT,0,e.."_sync1")};
-t.acklen=4;
-t.write_code={va(e.."_int",vi("wrdata_reg",t.offset))};
-t.read_code={va(vi("rddata_reg",t.offset),e.."_int")};
-t.reset_code_main={va(e.."_int",0)};
-t.extra_code={vcomment("synchronizer chain for field : "..t.name.." (type RW/RO, clk_sys_i <-> "..t.clock..")");
-vsyncprocess(t.clock,"rst_n_i",{
+if(e.access==ACC_RW_RO)then
+e.ports={port(BIT,0,"out",t.."_o","Port for asynchronous (clock: "..e.clock..") BIT field: '"..e.name.."' in reg: '"..a.name.."'",VPORT_REG)};
+e.signals={signal(BIT,0,t.."_int"),
+signal(BIT,0,t.."_sync0"),
+signal(BIT,0,t.."_sync1")};
+e.acklen=4;
+e.write_code={va(t.."_int",vi("wrdata_reg",e.offset))};
+e.read_code={va(vi("rddata_reg",e.offset),t.."_int")};
+e.reset_code_main={va(t.."_int",csel(e.reset_value==nil,0,e.reset_value))};
+e.extra_code={vcomment("synchronizer chain for field : "..e.name.." (type RW/RO, clk_sys_i <-> "..e.clock..")");
+vsyncprocess(e.clock,"rst_n_i",{
 vreset(0,{
-va(e.."_o",0);
-va(e.."_sync0",0);
-va(e.."_sync1",0);
+va(t.."_o",csel(e.reset_value==nil,0,e.reset_value));
+va(t.."_sync0",csel(e.reset_value==nil,0,e.reset_value));
+va(t.."_sync1",csel(e.reset_value==nil,0,e.reset_value));
 });
 vposedge({
-va(e.."_sync0",e.."_int");
-va(e.."_sync1",e.."_sync0");
-va(e.."_o",e.."_sync1");
+va(t.."_sync0",t.."_int");
+va(t.."_sync1",t.."_sync0");
+va(t.."_o",t.."_sync1");
 });
 });
 };
-elseif(t.access==ACC_RO_WO)then
-t.ports={port(BIT,0,"in",e.."_i","Port for asynchronous (clock: "..t.clock..") BIT field: '"..t.name.."' in reg: '"..a.name.."'",VPORT_REG)};
-t.signals={signal(BIT,0,e.."_sync0"),
-signal(BIT,0,e.."_sync1")};
-t.acklen=1;
-t.write_code={};
-t.read_code={va(vi("rddata_reg",t.offset),e.."_sync1")};
-t.reset_code_main={};
-t.extra_code={vcomment("synchronizer chain for field : "..t.name.." (type RO/WO, "..t.clock.." -> clk_sys_i)");
-vsyncprocess(t.clock,"rst_n_i",{
+elseif(e.access==ACC_RO_WO)then
+e.ports={port(BIT,0,"in",t.."_i","Port for asynchronous (clock: "..e.clock..") BIT field: '"..e.name.."' in reg: '"..a.name.."'",VPORT_REG)};
+e.signals={signal(BIT,0,t.."_sync0"),
+signal(BIT,0,t.."_sync1")};
+e.acklen=1;
+e.write_code={};
+e.read_code={va(vi("rddata_reg",e.offset),t.."_sync1")};
+e.reset_code_main={};
+e.extra_code={vcomment("synchronizer chain for field : "..e.name.." (type RO/WO, "..e.clock.." -> clk_sys_i)");
+vsyncprocess(e.clock,"rst_n_i",{
 vreset(0,{
-va(e.."_sync0",0);
-va(e.."_sync1",0);
+va(t.."_sync0",0);
+va(t.."_sync1",0);
 });
 vposedge({
-va(e.."_sync0",e.."_i");
-va(e.."_sync1",e.."_sync0");
+va(t.."_sync0",t.."_i");
+va(t.."_sync1",t.."_sync0");
 });
 });
 };
-elseif(t.access==ACC_RW_RW)then
-if(t.load~=LOAD_EXT)then
+elseif(e.access==ACC_RW_RW)then
+if(e.load~=LOAD_EXT)then
 die("Only external load is supported for RW/RW bit fields");
 end
-local a="Ports for asynchronous (clock: "..t.clock..") RW/RW BIT field: '"..t.name.."' in reg: '"..a.name.."'";
-t.ports={port(BIT,0,"out",e.."_o",a,VPORT_REG),
-port(BIT,0,"in",e.."_i",nil,VPORT_REG),
-port(BIT,0,"out",e.."_load_o",nil,VPORT_REG)};
-t.signals={signal(BIT,0,e.."_int_read"),
-signal(BIT,0,e.."_int_write"),
-signal(BIT,0,e.."_lw"),
-signal(BIT,0,e.."_lw_delay"),
-signal(BIT,0,e.."_lw_read_in_progress"),
-signal(BIT,0,e.."_lw_s0"),
-signal(BIT,0,e.."_lw_s1"),
-signal(BIT,0,e.."_lw_s2"),
-signal(BIT,0,e.."_rwsel")};
-t.acklen=6;
-t.write_code={
-va(e.."_int_write",vi("wrdata_reg",t.offset));
-va(e.."_lw",1);
-va(e.."_lw_delay",1);
-va(e.."_lw_read_in_progress",0);
-va(e.."_rwsel",1);};
-t.read_code={vif(vequal("wb_we_i",0),{
-va(vi("rddata_reg",t.offset),vundefined());
-va(e.."_lw",1);
-va(e.."_lw_delay",1);
-va(e.."_lw_read_in_progress",1);
-va(e.."_rwsel",0);});};
-t.reset_code_main={va(e.."_lw",0);
-va(e.."_lw_delay",0);
-va(e.."_lw_read_in_progress",0);
-va(e.."_rwsel",0);
-va(e.."_int_write",0);
+local a="Ports for asynchronous (clock: "..e.clock..") RW/RW BIT field: '"..e.name.."' in reg: '"..a.name.."'";
+e.ports={port(BIT,0,"out",t.."_o",a,VPORT_REG),
+port(BIT,0,"in",t.."_i",nil,VPORT_REG),
+port(BIT,0,"out",t.."_load_o",nil,VPORT_REG)};
+e.signals={signal(BIT,0,t.."_int_read"),
+signal(BIT,0,t.."_int_write"),
+signal(BIT,0,t.."_lw"),
+signal(BIT,0,t.."_lw_delay"),
+signal(BIT,0,t.."_lw_read_in_progress"),
+signal(BIT,0,t.."_lw_s0"),
+signal(BIT,0,t.."_lw_s1"),
+signal(BIT,0,t.."_lw_s2"),
+signal(BIT,0,t.."_rwsel")};
+e.acklen=6;
+e.write_code={
+va(t.."_int_write",vi("wrdata_reg",e.offset));
+va(t.."_lw",1);
+va(t.."_lw_delay",1);
+va(t.."_lw_read_in_progress",0);
+va(t.."_rwsel",1);};
+e.read_code={vif(vequal("wb_we_i",0),{
+va(vi("rddata_reg",e.offset),vundefined());
+va(t.."_lw",1);
+va(t.."_lw_delay",1);
+va(t.."_lw_read_in_progress",1);
+va(t.."_rwsel",0);});};
+e.reset_code_main={va(t.."_lw",0);
+va(t.."_lw_delay",0);
+va(t.."_lw_read_in_progress",0);
+va(t.."_rwsel",0);
+va(t.."_int_write",0);
 };
-t.ackgen_code_pre={va(e.."_lw",e.."_lw_delay");
-va(e.."_lw_delay",0);
-vif(vand(vequal(vi("ack_sreg",1),1),vequal(e.."_lw_read_in_progress",1)),{
-va(vi("rddata_reg",t.offset),e.."_int_read");
-va(e.."_lw_read_in_progress",0);
+e.ackgen_code_pre={va(t.."_lw",t.."_lw_delay");
+va(t.."_lw_delay",0);
+vif(vand(vequal(vi("ack_sreg",1),1),vequal(t.."_lw_read_in_progress",1)),{
+va(vi("rddata_reg",e.offset),t.."_int_read");
+va(t.."_lw_read_in_progress",0);
 });
 };
-t.extra_code={vcomment("asynchronous BIT register : "..t.name.." (type RW/WO, "..t.clock.." <-> clk_sys_i)");
-vsyncprocess(t.clock,"rst_n_i",{
+e.extra_code={vcomment("asynchronous BIT register : "..e.name.." (type RW/WO, "..e.clock.." <-> clk_sys_i)");
+vsyncprocess(e.clock,"rst_n_i",{
 vreset(0,{
-va(e.."_lw_s0",0);
-va(e.."_lw_s1",0);
-va(e.."_lw_s2",0);
-va(e.."_int_read",0);
-va(e.."_load_o",0);
-va(e.."_o",0);
+va(t.."_lw_s0",0);
+va(t.."_lw_s1",0);
+va(t.."_lw_s2",0);
+va(t.."_int_read",0);
+va(t.."_load_o",0);
+va(t.."_o",0);
 });
 vposedge({
-va(e.."_lw_s0",e.."_lw");
-va(e.."_lw_s1",e.."_lw_s0");
-va(e.."_lw_s2",e.."_lw_s1");
-vif(vand(vequal(e.."_lw_s2",0),vequal(e.."_lw_s1",1)),{
-vif(vequal(e.."_rwsel",1),{
-va(e.."_o",e.."_int_write");
-va(e.."_load_o",1);
+va(t.."_lw_s0",t.."_lw");
+va(t.."_lw_s1",t.."_lw_s0");
+va(t.."_lw_s2",t.."_lw_s1");
+vif(vand(vequal(t.."_lw_s2",0),vequal(t.."_lw_s1",1)),{
+vif(vequal(t.."_rwsel",1),{
+va(t.."_o",t.."_int_write");
+va(t.."_load_o",1);
 },{
-va(e.."_load_o",0);
-va(e.."_int_read",e.."_i");
+va(t.."_load_o",0);
+va(t.."_int_read",t.."_i");
 });
 },{
-va(e.."_load_o",0);
+va(t.."_load_o",0);
 });
 });
 });
 };
-elseif(t.access==ACC_WO_RO)then
-die("WO-RO type unsupported yet ("..t.name..")");
+elseif(e.access==ACC_WO_RO)then
+die("WO-RO type unsupported yet ("..e.name..")");
 end
 end
 end
@@ -3124,7 +3124,7 @@ t.signals={signal(SLV,t.size,e.."_int")};
 t.acklen=1;
 t.write_code={va(e.."_int",vir("wrdata_reg",t));};
 t.read_code={va(vir("rddata_reg",t),e.."_int");};
-t.reset_code_main={va(e.."_int",0);};
+t.reset_code_main={va(e.."_int",csel(t.reset_value==nil,0,t.reset_value));};
 t.extra_code={va(e.."_o",e.."_int");};
 elseif(t.access==ACC_RO_WO)then
 t.ports={port(t.type,t.size,"in",e.."_i","Port for "..fieldtype_2_vhdl[t.type].." field: '"..t.name.."' in reg: '"..a.name.."'",VPORT_REG)};
@@ -3164,7 +3164,7 @@ t.write_code={va(e.."_int",vir("wrdata_reg",t));
 va(e.."_swb",1);
 va(e.."_swb_delay",1);};
 t.read_code={va(vir("rddata_reg",t),e.."_int");};
-t.reset_code_main={va(e.."_int",0);
+t.reset_code_main={va(e.."_int",csel(t.reset_value==nil,0,t.reset_value));
 va(e.."_swb",0);
 va(e.."_swb_delay",0);};
 t.ackgen_code_pre={va(e.."_swb",e.."_swb_delay");
@@ -3175,7 +3175,7 @@ vreset(0,{
 va(e.."_swb_s0",0);
 va(e.."_swb_s1",0);
 va(e.."_swb_s2",0);
-va(e.."_o",0);
+va(e.."_o",csel(t.reset_value==nil,0,t.reset_value));
 });
 vposedge({
 va(e.."_swb_s0",e.."_swb");

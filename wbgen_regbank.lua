@@ -182,14 +182,14 @@ function gen_hdl_code_bit(field, reg)
 																--va(vi("rddata_reg", field.offset), vundefined()) };
 			field.read_code = 			{ va(vi("rddata_reg", field.offset), prefix.."_int") };
 
-	    field.reset_code_main =	{ va(prefix.."_int", 0) };
+	    field.reset_code_main =	{ va(prefix.."_int", csel(field.reset_value == nil, 0, field.reset_value)) };
 
 			field.extra_code =			{	vcomment("synchronizer chain for field : "..field.name.." (type RW/RO, clk_sys_i <-> "..field.clock..")");
 																vsyncprocess(field.clock, "rst_n_i", {
 																vreset(0, {
- 								    							va(prefix.."_o", 0);
- 							    								va(prefix.."_sync0", 0);
-																	va(prefix.."_sync1", 0);
+ 								    							va(prefix.."_o", csel(field.reset_value == nil, 0, field.reset_value));
+ 							    								va(prefix.."_sync0", csel(field.reset_value == nil, 0, field.reset_value));
+																	va(prefix.."_sync1", csel(field.reset_value == nil, 0, field.reset_value));
 																});
 																vposedge({
 																	va(prefix.."_sync0", prefix.."_int");
@@ -346,7 +346,7 @@ function gen_hdl_code_slv(field, reg)
 			field.acklen = 					1;
 			field.write_code =			{ va(prefix.."_int", vir("wrdata_reg", field)); };
 			field.read_code = 			{ va(vir("rddata_reg", field), prefix.."_int"); };
-	    field.reset_code_main =	{ va(prefix.."_int",  0); };
+	    field.reset_code_main =	{ va(prefix.."_int",  csel(field.reset_value == nil, 0, field.reset_value)); };
 			field.extra_code =			{ va(prefix.."_o", prefix.."_int"); };
 		
     elseif (field.access == ACC_RO_WO) then
@@ -402,7 +402,7 @@ function gen_hdl_code_slv(field, reg)
 							
 			field.read_code = 						{ va(vir("rddata_reg", field), prefix.."_int"); };
 		
-			field.reset_code_main =				{ va(prefix.."_int", 0); 
+			field.reset_code_main =				{ va(prefix.."_int", csel(field.reset_value == nil, 0, field.reset_value)); 
 																			va(prefix.."_swb", 0);
 																			va(prefix.."_swb_delay", 0); };
 										
@@ -416,7 +416,7 @@ function gen_hdl_code_slv(field, reg)
 																					va(prefix.."_swb_s0", 0);
 																					va(prefix.."_swb_s1", 0); 
 																					va(prefix.."_swb_s2", 0); 
-																					va(prefix.."_o", 0);
+																					va(prefix.."_o", csel(field.reset_value == nil, 0, field.reset_value));
 																				});
 																				vposedge({
 																					va(prefix.."_swb_s0", prefix.."_swb");
