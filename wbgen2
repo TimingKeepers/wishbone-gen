@@ -254,27 +254,27 @@ end
 print("Align  ",e.name,e.align,o,a);
 return a;
 end
-function calc_field_offset(e,t)
-local a=t.current_offset;
-if(t.__type==TYPE_FIFO)then
-local o=align(e,a);
-if((o%DATA_BUS_WIDTH)+e.size>DATA_BUS_WIDTH)then
-e.align=DATA_BUS_WIDTH;
-a=align(e,a);
+function calc_field_offset(t,e)
+local a=e.current_offset;
+if(e.__type==TYPE_FIFO)then
+local o=align(t,a);
+if((o%DATA_BUS_WIDTH)+t.size>DATA_BUS_WIDTH)then
+t.align=DATA_BUS_WIDTH;
+a=align(t,a);
 else
 a=o;
 end
-t.current_offset=a+e.size;
-e.offset=a;
+e.current_offset=a+t.size;
+t.offset=a;
 else
-a=align(e,a);
-t.current_offset=a+e.size;
-e.offset=a;
+a=align(t,a);
+e.current_offset=a+t.size;
+t.offset=a;
 end
-e.offset_unaligned=t.current_offset_unaligned;
-t.current_offset_unaligned=t.current_offset_unaligned+e.size;
-if(t.__type==TYPE_REG and t.current_offset>DATA_BUS_WIDTH)then
-die("Total size of register '"..t.name.."' ("..t.current_offset..") exceeds data bus width ("..DATA_BUS_WIDTH..")");
+t.offset_unaligned=e.current_offset_unaligned;
+e.current_offset_unaligned=e.current_offset_unaligned+t.size;
+if(e.__type==TYPE_REG and e.current_offset>DATA_BUS_WIDTH)then
+die("Total size of register '"..e.name.."' ("..e.current_offset..") exceeds data bus width ("..DATA_BUS_WIDTH..")");
 end
 end
 function calc_num_fields(t,e)
@@ -3879,7 +3879,8 @@ elseif(o==MONOSTABLE)then
 t.access_bus=WRITE_ONLY;
 t.access_dev=READ_ONLY;
 t.reset_code_main={va(a,0)};
-t.write_code={vif(vequal(vi("rddata_reg",t.offset),1),{va(a,1)})};
+t.write_code={vif(vequal(vi("wrdata_reg",t.offset),1),{va(a,1)})};
+table_join(t.read_code,{va(vi("rddata_reg",t.offset),0)});
 t.ackgen_code={va(a,0)}
 end
 table.insert(s,t);

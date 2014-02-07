@@ -273,7 +273,8 @@ function fifo_wire_bus_ports(fifo)
             f.access_bus = WRITE_ONLY;
             f.access_dev = READ_ONLY;
             f.reset_code_main = { va(sig, 0) };
-            f.write_code = { vif(vequal(vi("rddata_reg", f.offset), 1), { va(sig, 1) })};
+            f.write_code = { vif(vequal(vi("wrdata_reg", f.offset), 1), { va(sig, 1) })};
+						table_join(f.read_code, { va(vi("rddata_reg", f.offset), 0) });
             f.ackgen_code = { va(sig, 0 )}
          end
 				 table.insert(csr, f);		
