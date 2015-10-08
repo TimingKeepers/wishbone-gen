@@ -889,21 +889,13 @@ emit("");
 emit("package body "..t.." is");
 emit("function f_x_to_zero (x:std_logic) return std_logic is");
 emit("begin")
-emit("if x = '1' then")
-emit("return '1';")
-emit("else")
-emit("return '0';")
-emit("end if;")
+emit("return x;")
 emit("end function;");
 emit("function f_x_to_zero (x:std_logic_vector) return std_logic_vector is");
 emit("variable tmp: std_logic_vector(x'length-1 downto 0);");
 emit("begin");
 emit("for i in 0 to x'length-1 loop");
-emit("if(x(i) = 'X' or x(i) = 'U') then");
-emit("tmp(i):= '0';");
-emit("else");
 emit("tmp(i):=x(i);");
-emit("end if; ");
 emit("end loop; ");
 emit("return tmp;");
 emit("end function;");
@@ -1863,7 +1855,11 @@ emit("");
 emit("#ifndef __WBGEN2_REGDEFS_"..string.upper(string.gsub(input_wb_file,"%.","_")))
 emit("#define __WBGEN2_REGDEFS_"..string.upper(string.gsub(input_wb_file,"%.","_")))
 emit("");
-emit("#include <inttypes.h>");
+emit("#ifdef __KERNEL__")
+emit("#include <linux/types.h>")
+emit("#else")
+emit("#include <inttypes.h>")
+emit("#endif")
 emit("");
 emit("#if defined( __GNUC__)");
 emit("#define PACKED __attribute__ ((packed))");

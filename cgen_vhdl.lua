@@ -103,22 +103,23 @@ function cgen_vhdl_package()
 
    emit("function f_x_to_zero (x:std_logic) return std_logic is");
    emit("begin")
-	 emit("if x = '1' then")
-   emit("return '1';")
-   emit("else")
-	 emit("return '0';")
-	 emit("end if;")
+--	 emit("if x = '1' then")
+--   emit("return '1';")
+--   emit("else")
+--	 emit("return '0';")
+--	 emit("end if;")
+	 emit("return x;")
    emit("end function;");
 
    emit("function f_x_to_zero (x:std_logic_vector) return std_logic_vector is");
 	 emit("variable tmp: std_logic_vector(x'length-1 downto 0);");
    emit("begin");
    emit("for i in 0 to x'length-1 loop");
-   emit("if(x(i) = 'X' or x(i) = 'U') then");
-   emit("tmp(i):= '0';");
-   emit("else");
+--   emit("if(x(i) = 'X' or x(i) = 'U') then");
+--   emit("tmp(i):= '0';");
+--   emit("else");
    emit("tmp(i):=x(i);");
-   emit("end if; ");
+--   emit("end if; ");
    emit("end loop; ");
    emit("return tmp;");
    emit("end function;");
